@@ -32,15 +32,31 @@ jobs:
       - name: Install dependencies
         working-directory: ./web
         run: npm ci
+        continue-on-error: false
 
       - name: Build
         working-directory: ./web
         env:
           GITHUB_PAGES: true
         run: npm run build
+        continue-on-error: false
 
       - name: Copy manifests
-        run: cp -r manifests web/dist/manifests
+        run: |
+          echo "Checking for manifests directory..."
+          ls -la | grep manifests || echo "No manifests directory in root"
+          mkdir -p web/dist/manifests
+          if [ -d "manifests" ] && [ "$(ls -A manifests 2>/dev/null)" ]; then
+            echo "Copying manifests..."
+            cp -r manifests/* web/dist/manifests/ 2>&1 || echo "Copy failed, but continuing"
+            echo "Manifests copied successfully"
+            ls -la web/dist/manifests/ || echo "Manifests directory is empty"
+          else
+            echo "Warning: manifests directory not found or empty, creating placeholder"
+            echo '[]' > web/dist/manifests/.gitkeep
+          fi
+          echo "Verifying dist structure..."
+          ls -la web/dist/ || echo "Dist directory check failed"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

@@ -6,22 +6,25 @@ A project that stores DOS game files (and other binaries) on the Nimiq blockchai
 
 > **Note:** If you see this README on GitHub Pages instead of the web app, go to Settings → Pages and change the Source to **"GitHub Actions"** (not "Deploy from a branch").
 
-**🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
-
 ## Architecture
 
-- **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq
-- **Web** (Vue 3): Frontend that connects directly to Nimiq RPC to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using JS-DOS
+- **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq blockchain
+- **Web** (Vue 3): Frontend that connects directly to public Nimiq RPC endpoints to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using JS-DOS
 
-**Note:** The backend has been removed. The frontend now connects directly to public Nimiq RPC endpoints, making it perfect for static hosting like GitHub Pages!
+**Key Features:**
+- ✅ **No Backend Required** - Frontend connects directly to public Nimiq RPC endpoints
+- ✅ **Static Hosting** - Perfect for GitHub Pages, Netlify, Vercel, etc.
+- ✅ **Browser-Based** - All file reconstruction happens client-side using WebCrypto API
+- ✅ **RPC Endpoint Selection** - Users can choose from public endpoints or use custom ones
+- ✅ **Direct Blockchain Access** - Fetches transactions by hash directly from the blockchain
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker and Docker Compose (for backend and web)
+- Node.js 20+ (for web frontend)
 - Go 1.21+ (for uploader CLI)
-- Nimiq RPC endpoint (configured via environment variables)
+- A Nimiq RPC endpoint (public endpoints available, or run your own)
 
 ### Running Web Locally
 
@@ -45,7 +48,7 @@ Access at `http://localhost:5174`
 
 ### Running the Uploader
 
-The uploader is a standalone CLI tool that should be run directly (not via Docker Compose):
+The uploader is a standalone CLI tool:
 
 ```bash
 cd uploader
@@ -89,15 +92,20 @@ The `manifest.json` file contains metadata about the stored file:
   "chunk_size": 51,
   "sha256": "abc123...",
   "sender_address": "NQ00 ...",
-  "network": "testnet",
-  "start_height": 1000000,
-  "end_height": 1001000
+  "network": "mainnet",
+  "expected_tx_hashes": [
+    "tx_hash_1",
+    "tx_hash_2",
+    "..."
+  ]
 }
 ```
 
+**Important:** The `expected_tx_hashes` array contains the transaction hashes that store each chunk. The frontend uses these to fetch transactions directly from the blockchain.
+
 ## Generating a Manifest
 
-Use the uploader CLI to generate a manifest:
+The uploader automatically generates a manifest after a successful upload. You can also generate one manually:
 
 ```bash
 cd uploader
@@ -106,29 +114,33 @@ go build -o uploader .
   --file /path/to/file.bin \
   --game-id 1 \
   --sender "NQ00 ..." \
-  --network testnet \
-  --output manifest.json
-```
-
-Or if installed:
-
-```bash
-uploader manifest \
-  --file /path/to/file.bin \
-  --game-id 1 \
-  --sender "NQ00 ..." \
-  --network testnet \
+  --network mainnet \
   --output manifest.json
 ```
 
 This will:
 - Read the file
 - Calculate SHA256
-- Create `manifest.json` with all metadata
+- Create `manifest.json` with all metadata (but without `expected_tx_hashes` - those are added after upload)
 
 ## Account Management
 
 Before uploading, you need to ensure your account is imported and unlocked in the Nimiq RPC node.
+
+### Create a New Account
+
+```bash
+./uploader account create \
+  --rpc-url http://localhost:8648
+```
+
+This will:
+- Create a new account via RPC
+- Generate a random passphrase
+- Save credentials to `account_credentials.txt`
+- Display the address, public key, and private key
+
+**Save the credentials securely!** The account will be automatically imported and unlocked.
 
 ### Check Account Status
 
@@ -138,28 +150,35 @@ Before uploading, you need to ensure your account is imported and unlocked in th
   --rpc-url http://localhost:8648
 ```
 
-### Create a New Account
-
-```bash
-./uploader account create \
-  --passphrase "your-secure-passphrase" \
-  --rpc-url http://localhost:8648
-```
-
-This will create a new account and display the address, public key, and private key. **Save the private key securely!**
-
 ### Import an Existing Account
 
 ```bash
 ./uploader account import \
-  --private-key "hex-private-key" \
-  --passphrase "your-secure-passphrase" \
+  --from-file \
+  --unlock \
   --rpc-url http://localhost:8648
 ```
 
-The private key should be in hexadecimal format (with or without `0x` prefix).
+This loads credentials from `account_credentials.txt` and imports/unlocks the account.
 
-**Note:** After importing, you may need to unlock the account using your Nimiq RPC node's unlock method (not included in this tool).
+### Check Balance
+
+```bash
+./uploader account balance \
+  --address "NQ00 ..." \
+  --rpc-url http://localhost:8648
+```
+
+### Wait for Funds
+
+The uploader can wait until your account has sufficient NIM:
+
+```bash
+./uploader account wait-funds \
+  --address "NQ00 ..." \
+  --min-balance 1000000 \
+  --rpc-url http://localhost:8648
+```
 
 ## Packaging DOS Games
 
@@ -188,7 +207,10 @@ The script will:
 
 ```bash
 cd uploader
-go run package.go --dir ./doom-files --output doom.zip --exe DOOM.EXE
+./uploader package \
+  --dir ./doom-files \
+  --output doom.zip \
+  --exe DOOM.EXE
 ```
 
 **Important:** The ZIP file should contain:
@@ -200,22 +222,52 @@ The ZIP structure will be preserved, and JS-DOS will be able to extract and run 
 
 ### Handling IMG Disk Images
 
-Some DOS games come as IMG disk image files. To package them:
+Some DOS games come as IMG disk image files. The frontend automatically detects IMG files and mounts them using DOSBox's `imgmount` command.
+
+To package an IMG file:
 
 ```bash
-# Try to extract and package automatically
+# Package IMG directly (frontend will mount it)
+./uploader package \
+  --dir . \
+  --output digger.zip \
+  --exe DIGGER.EXE
+
+# Or extract first, then package
 ./scripts/extract-img.sh DiggerRem.img extracted-files
 ./scripts/package-game.sh extracted-files DiggerRem.zip DIGGER.EXE
-
-# Or use the Digger-specific script
-./scripts/package-digger.sh DiggerRem.img DiggerRem.zip
 ```
-
-The extraction script will try multiple methods (mtools, 7z, Python) to extract files from the IMG. If extraction fails, the IMG file can be packaged as-is - the frontend will automatically mount it using `imgmount` when detected.
 
 ## Uploading Files
 
-### Dry-Run Mode (Recommended for Testing)
+### Real Upload Mode
+
+The uploader will automatically:
+1. Check that your account is imported and unlocked
+2. Wait for consensus to be established
+3. Wait for sufficient balance (if needed)
+4. Create chunks and send transactions
+5. Generate a manifest with transaction hashes
+
+```bash
+./uploader upload \
+  --file /path/to/file.zip \
+  --game-id 1 \
+  --rpc-url http://localhost:8648 \
+  --receiver "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES" \
+  --rate 1.0
+```
+
+The uploader supports:
+- Rate limiting (configurable tx/s)
+- Progress tracking (resumable via `upload_progress_<game_id>.json`)
+- Retry logic for failed sends
+- Automatic account status verification
+- Automatic manifest generation with transaction hashes
+
+After upload, the manifest will be saved with all transaction hashes. Place it in the `manifests/` directory for the frontend to discover it.
+
+### Dry-Run Mode (Testing)
 
 Generate chunk payloads without actually sending transactions:
 
@@ -228,126 +280,61 @@ Generate chunk payloads without actually sending transactions:
   --rate 1.0
 ```
 
-This creates `upload_plan.jsonl` with one JSON object per line:
-```json
-{"idx": 0, "payload_hex": "444f4f4d..."}
-{"idx": 1, "payload_hex": "444f4f4d..."}
-```
+This creates `upload_plan.jsonl` with one JSON object per line for manual broadcasting.
 
-You can then broadcast these transactions using other tooling.
+## Reconstruction Process
 
-### Real Upload Mode
+The reconstruction process happens entirely in the browser:
 
-The uploader will automatically check that your account is:
-1. **Imported** - Account exists in the RPC node
-2. **Unlocked** - Account is ready to send transactions
+1. **Load Manifest** - Frontend loads manifest from `/manifests/` directory (static JSON files)
+2. **Select RPC Endpoint** - User chooses a public Nimiq RPC endpoint (or custom)
+3. **Fetch Transactions** - Frontend calls `getTransactionByHash` for each hash in `expected_tx_hashes`
+4. **Parse Chunks** - Extract DOOM magic bytes, game_id, chunk_idx, length, and data from each transaction
+5. **Sort Chunks** - Sort by `chunk_idx` to ensure correct order
+6. **Reconstruct File** - Concatenate data fields (only first `len` bytes of each)
+7. **Verify SHA256** - Use WebCrypto API to verify the reconstructed file matches the manifest
+8. **Run Game** - Extract ZIP (if needed), mount files in JS-DOS, and execute
 
-If either check fails, the upload will abort with a helpful error message.
-
-```bash
-./uploader upload \
-  --file /path/to/file.bin \
-  --game-id 1 \
-  --sender "NQ00 ..." \
-  --rpc-url http://localhost:8648 \
-  --rate 1.0 \
-  --fee 0
-```
-
-The uploader supports:
-- Rate limiting (configurable tx/s)
-- Progress tracking (resumable via `upload_progress_<game_id>.json`)
-- Retry logic for failed sends
-- Automatic account status verification
-- Configurable transaction fees
-
-## Backend API
-
-### Endpoints
-
-- `GET /api/manifest` - Returns the manifest.json
-- `GET /api/status` - Returns indexing status:
-  ```json
-  {
-    "latestIndexedHeight": 1000000,
-    "chunksStored": 500,
-    "missingRanges": []
-  }
-  ```
-- `GET /api/chunks?game_id=1&from=0&limit=1000` - Returns chunks:
-  ```json
-  {
-    "game_id": 1,
-    "chunk_size": 51,
-    "items": [
-      {"idx": 0, "len": 51, "data_base64": "..."},
-      {"idx": 1, "len": 51, "data_base64": "..."}
-    ]
-  }
-  ```
-- `GET /api/chunks/raw` - Returns reconstructed file as `application/octet-stream`
-- `GET /api/verify` - Server-side verification:
-  ```json
-  {
-    "sha256": "abc123...",
-    "matches": true,
-    "expected_sha": "abc123..."
-  }
-  ```
-
-### Configuration
-
-Environment variables:
-- `NIMIQ_RPC_URL` - Nimiq RPC endpoint (required)
-- `INDEX_START_HEIGHT` - Start indexing from this height (default: 0)
-- `POLL_INTERVAL_SECONDS` - Poll interval (default: 2)
-
-## Reconstruction
-
-The reconstruction process:
-
-1. Fetch chunks via `/api/chunks` (paginated)
-2. Sort chunks by `idx`
-3. Concatenate `data` fields (only first `len` bytes of each)
-4. Verify SHA256 matches manifest
-5. Use reconstructed file (e.g., mount in JS-DOS)
-
-The backend stores chunks in SQLite:
-- `chunks(game_id, idx, len, data, tx_hash, height)`
-- `meta(key, value)` for indexing state
+No backend needed! Everything runs client-side.
 
 ## Web Frontend
 
 The Vue 3 frontend provides:
 
-1. **Load Manifest** - Fetches manifest from backend
-2. **Sync Chunks** - Downloads all chunks (paginated)
-3. **Verify SHA256** - Browser-side verification using WebCrypto
-4. **Run DOOM** - Integrates with JS-DOS (requires DOOM files)
+1. **RPC Endpoint Selection** - Choose from public endpoints (NimiqScan Mainnet/Testnet) or enter custom
+2. **Manifest Selection** - Load manifests from `/manifests/` directory
+3. **Sync Chunks** - Fetches transactions directly from blockchain by hash
+4. **Progress Tracking** - Shows chunks fetched, bytes downloaded, and completion percentage
+5. **Verify SHA256** - Browser-side verification using WebCrypto API (automatic after sync)
+6. **Run Game** - Integrates with JS-DOS to run games directly in the browser
 
 ### JS-DOS Integration
 
-To run DOOM:
+The frontend automatically:
+- Extracts game files from ZIP archives using JSZip
+- Mounts IMG disk images using DOSBox's `imgmount` command
+- Writes files to JS-DOS virtual filesystem
+- Executes game executables (.exe, .com, .bat)
+- Creates AUTOEXEC.BAT files for automatic game startup
 
-1. Place DOOM files in `web/public/doom/`:
-   - `DOOM.EXE`
-   - `DOOM1.WAD` (or use the reconstructed file)
+**Note:** Game assets are not included due to copyright. Users must upload their own games to the blockchain.
 
-2. Download js-dos and place in `web/public/jsdos/`
+## GitHub Pages Deployment
 
-3. The frontend will mount the reconstructed WAD file and boot DOOM
+This project is deployed to GitHub Pages! See [GITHUB_PAGES.md](GITHUB_PAGES.md) for details.
 
-**Note:** DOOM assets are not included due to copyright. Use the shareware version or your own copy.
+**To deploy your own:**
+
+1. Fork this repository
+2. Go to Settings → Pages
+3. Set Source to **"GitHub Actions"**
+4. Push to `main` branch - the workflow will automatically build and deploy
+
+The app will be available at `https://yourusername.github.io/nimiq-doom/`
+
+**Note:** If your repository name differs, update the `base` path in `web/vite.config.js`.
 
 ## Development
-
-### Backend
-
-```bash
-cd backend
-go mod download
-go run .
-```
 
 ### Uploader
 
@@ -375,46 +362,56 @@ npm install
 npm run dev
 ```
 
+Build for production:
+
+```bash
+cd web
+npm run build
+# Output in web/dist/
+```
+
 ## Testing
 
-Create a test binary:
+Create a test binary and upload it:
 
 ```bash
 # Create a small test file
 dd if=/dev/urandom of=test.bin bs=256 count=1
 
-# Generate manifest
+# Upload to blockchain
 cd uploader
 go build -o uploader .
-./uploader manifest \
-  --file ../test.bin \
-  --game-id 1 \
-  --sender "NQ00 0000 0000 0000 0000 0000 0000 0000 0000" \
-  --output ../manifest.json
-
-# Upload (dry-run)
 ./uploader upload \
   --file ../test.bin \
-  --game-id 1 \
-  --sender "NQ00 0000 0000 0000 0000 0000 0000 0000 0000" \
-  --dry-run
+  --game-id 999 \
+  --rpc-url http://localhost:8648
+
+# This will generate a manifest with transaction hashes
+# Copy it to manifests/ directory for the frontend to discover
+cp manifest.json ../manifests/testfile.json
 ```
 
-## Nimiq RPC Notes
+## How It Works
 
-The implementation includes placeholder RPC methods that may need adjustment based on the actual Nimiq RPC API:
+1. **Upload Phase:**
+   - Uploader chunks a file into 51-byte pieces
+   - Each chunk is wrapped in a 64-byte payload with magic bytes, game_id, chunk_idx, length, and data
+   - Transactions are sent to the Nimiq blockchain with these payloads
+   - A manifest is generated with all transaction hashes
 
-- `GetHeadHeight()` - Tries multiple method names
-- `GetBlockByHeight()` - Tries multiple method names
-- Transaction sending - Not yet implemented (see `uploader/sender.go`)
+2. **Reconstruction Phase:**
+   - Frontend loads manifest from `/manifests/` directory
+   - For each transaction hash, calls `getTransactionByHash` on the selected RPC endpoint
+   - Parses chunks from transaction data
+   - Reconstructs the original file
+   - Verifies SHA256 hash matches the manifest
 
-Check the code for `TODO` comments indicating where RPC method names may differ.
+3. **Execution Phase:**
+   - If the file is a ZIP, extracts it using JSZip
+   - Writes files to JS-DOS virtual filesystem
+   - Mounts IMG files if detected
+   - Executes the game executable
 
 ## License
 
-This project is provided as-is for educational/meme purposes. DOOM is a trademark of id Software. This project does not include DOOM assets - users must provide their own copy.
-
-
-Creating test file: test.bin (256 bytes)
-Created test.bin
-SHA256: 7b2a4605625e2c49e21feb6e2db3d234642272c783ecae0c9f555a1c0bd89129
+This project is provided as-is for educational/meme purposes. Game assets are not included - users must provide their own copies and upload them to the blockchain.
