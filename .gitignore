@@ -8,4 +8,4 @@ upload_plan.jsonl
 node_modules/
 dist/
 *.log
-account_credentials.txt
+uploader/account_credentials.txt

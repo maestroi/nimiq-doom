@@ -56,8 +56,8 @@ func main() {
 	// Initialize Nimiq RPC client
 	rpcClient := NewNimiqRPC(*nimiqRPCURL)
 
-	// Initialize indexer
-	indexer := NewIndexer(db, rpcClient, *indexStartHeight, time.Duration(*pollInterval)*time.Second, *manifestPath)
+	// Initialize indexer (startHeight no longer used - we fetch transactions directly by hash)
+	indexer := NewIndexer(db, rpcClient, time.Duration(*pollInterval)*time.Second, *manifestPath)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -11,44 +11,30 @@ import (
 )
 
 const (
-	MagicDOOM      = "DOOM"
-	ChunkSize      = 51
-	MaxBlocksPerPoll = 100 // Maximum blocks to fetch per poll cycle to avoid huge catch-ups
+	MagicDOOM = "DOOM"
+	ChunkSize = 51
 )
 
 type Indexer struct {
-	db            *DB
-	rpc           *NimiqRPC
-	startHeight   int64
-	pollInterval  time.Duration
-	manifestPath  string // Path to manifest file for expected tx hashes
+	db           *DB
+	rpc          *NimiqRPC
+	pollInterval time.Duration
+	manifestPath string // Path to manifest file for expected tx hashes
 }
 
-func NewIndexer(db *DB, rpc *NimiqRPC, startHeight int64, pollInterval time.Duration, manifestPath string) *Indexer {
+func NewIndexer(db *DB, rpc *NimiqRPC, pollInterval time.Duration, manifestPath string) *Indexer {
 	return &Indexer{
 		db:           db,
 		rpc:          rpc,
-		startHeight:  startHeight,
 		pollInterval: pollInterval,
 		manifestPath: manifestPath,
 	}
 }
 
 func (idx *Indexer) Start(ctx context.Context) error {
-	lastHeight, err := idx.db.GetLastIndexedHeight()
-	if err != nil {
-		return fmt.Errorf("failed to get last indexed height: %w", err)
-	}
-
-	// Use startHeight if it's greater than lastHeight
-	if idx.startHeight > lastHeight {
-		lastHeight = idx.startHeight - 1
-	}
-
-	// First, try to fetch expected transactions by hash if manifest has them
+	// Fetch expected transactions by hash on startup
 	if err := idx.fetchExpectedTransactions(ctx); err != nil {
 		log.Printf("Warning: failed to fetch expected transactions: %v", err)
-		// Continue with normal polling
 	}
 
 	ticker := time.NewTicker(idx.pollInterval)
@@ -59,80 +45,13 @@ func (idx *Indexer) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Try fetching expected transactions first
+			// Only fetch expected transactions by hash - no block scanning needed
+			// We know exactly which transactions contain the chunks from the manifest
 			if err := idx.fetchExpectedTransactions(ctx); err != nil {
 				log.Printf("Warning: failed to fetch expected transactions: %v", err)
 			}
-			
-			// Then do normal block polling
-			if err := idx.poll(ctx, lastHeight); err != nil {
-				log.Printf("Poll error: %v", err)
-				// Continue polling despite errors
-			} else {
-				// Update lastHeight after successful poll
-				newHeight, err := idx.db.GetLastIndexedHeight()
-				if err == nil {
-					lastHeight = newHeight
-				}
-			}
 		}
 	}
-}
-
-func (idx *Indexer) poll(ctx context.Context, fromHeight int64) error {
-	headHeight, err := idx.rpc.GetHeadHeight()
-	if err != nil {
-		return fmt.Errorf("failed to get head height: %w", err)
-	}
-
-	if headHeight <= fromHeight {
-		return nil // No new blocks
-	}
-
-	// Limit the number of blocks to fetch per poll to avoid huge catch-ups
-	toHeight := headHeight
-	if headHeight-fromHeight > MaxBlocksPerPoll {
-		toHeight = fromHeight + MaxBlocksPerPoll
-		log.Printf("Limiting catch-up: indexing blocks %d to %d (head is %d, will continue next poll)", 
-			fromHeight+1, toHeight, headHeight)
-	} else {
-		log.Printf("Indexing blocks %d to %d", fromHeight+1, toHeight)
-	}
-
-	for height := fromHeight + 1; height <= toHeight; height++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		block, err := idx.rpc.GetBlockByHeight(height, true)
-		if err != nil {
-			log.Printf("Failed to fetch block %d: %v", height, err)
-			continue
-		}
-
-		if err := idx.processBlock(block); err != nil {
-			log.Printf("Failed to process block %d: %v", height, err)
-			continue
-		}
-
-		if err := idx.db.SetLastIndexedHeight(height); err != nil {
-			log.Printf("Failed to update last indexed height: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func (idx *Indexer) processBlock(block *Block) error {
-	for _, tx := range block.Transactions {
-		if err := idx.processTransaction(tx, block.Number); err != nil {
-			// Log but continue processing other transactions
-			log.Printf("Failed to process transaction %s: %v", tx.Hash, err)
-		}
-	}
-	return nil
 }
 
 func (idx *Indexer) processTransaction(tx Transaction, height int64) error {

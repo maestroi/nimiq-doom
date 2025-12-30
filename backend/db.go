@@ -51,25 +51,6 @@ func (db *DB) init() error {
 		return fmt.Errorf("failed to create chunks table: %w", err)
 	}
 
-	// Create meta table
-	_, err = db.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS meta (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create meta table: %w", err)
-	}
-
-	// Initialize last_indexed_height if not exists
-	_, err = db.conn.Exec(`
-		INSERT OR IGNORE INTO meta (key, value) VALUES ('last_indexed_height', '0')
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to initialize meta: %w", err)
-	}
-
 	return nil
 }
 
@@ -86,9 +67,17 @@ func (db *DB) GetLastIndexedHeight() (int64, error) {
 	return height, nil
 }
 
-func (db *DB) SetLastIndexedHeight(height int64) error {
-	_, err := db.conn.Exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('last_indexed_height', ?)", height)
-	return err
+// GetMaxChunkHeight returns the maximum height from all chunks (for status endpoint)
+func (db *DB) GetMaxChunkHeight() (int64, error) {
+	var height sql.NullInt64
+	err := db.conn.QueryRow("SELECT MAX(height) FROM chunks").Scan(&height)
+	if err != nil {
+		return 0, err
+	}
+	if !height.Valid {
+		return 0, nil
+	}
+	return height.Int64, nil
 }
 
 func (db *DB) InsertChunk(gameID uint32, idx uint32, length uint8, data []byte, txHash string, height int64) error {

@@ -83,10 +83,11 @@ func (api *API) GetManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetStatus(w http.ResponseWriter, r *http.Request) {
-	height, err := api.db.GetLastIndexedHeight()
+	// Get max height from chunks (since we're no longer doing block polling)
+	height, err := api.db.GetMaxChunkHeight()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get indexed height: %v", err), http.StatusInternalServerError)
-		return
+		// If no chunks exist, default to 0
+		height = 0
 	}
 
 	// Get manifest to determine game_id

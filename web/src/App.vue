@@ -7,6 +7,7 @@
       <button @click="loadManifest" :disabled="loading">Load Manifest</button>
       <button @click="syncChunks" :disabled="!manifest || loading">Sync Chunks</button>
       <button @click="verifyFile" :disabled="!fileData || loading">Verify SHA256</button>
+      <button @click="downloadFile" :disabled="!verified || loading">Download File</button>
       <button @click="runDoom" :disabled="!verified || loading">Run DOOM</button>
     </div>
 
@@ -215,6 +216,25 @@ async function verifyFile() {
   } finally {
     loading.value = false
   }
+}
+
+function downloadFile() {
+  if (!fileData.value || !manifest.value || !verified.value) return
+
+  // Create a blob from the file data
+  const blob = new Blob([fileData.value], { type: 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  
+  // Create a temporary anchor element and trigger download
+  const a = document.createElement('a')
+  a.href = url
+  a.download = manifest.value.filename || 'downloaded-file.bin'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  
+  // Clean up the object URL
+  URL.revokeObjectURL(url)
 }
 
 async function runDoom() {
