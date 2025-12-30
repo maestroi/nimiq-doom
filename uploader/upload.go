@@ -259,6 +259,7 @@ func generateManifestAfterUpload(filePath string, gameID uint32, sender string, 
 	manifest := Manifest{
 		GameID:        gameID,
 		Filename:      filename,
+		Executable:    "", // Can be set manually after manifest generation
 		TotalSize:     uint64(len(data)),
 		ChunkSize:     51,
 		SHA256:        sha256Hex,

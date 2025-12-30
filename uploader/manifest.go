@@ -12,6 +12,7 @@ import (
 type Manifest struct {
 	GameID       uint32 `json:"game_id"`
 	Filename     string `json:"filename"`
+	Executable   string `json:"executable,omitempty"` // Optional: specifies which .exe/.com/.bat to run
 	TotalSize    uint64 `json:"total_size"`
 	ChunkSize    int    `json:"chunk_size"`
 	SHA256       string `json:"sha256"`
@@ -62,6 +63,7 @@ func newManifestCmd() *cobra.Command {
 			manifest := Manifest{
 				GameID:       gameID,
 				Filename:     filename,
+				Executable:   "", // Can be set manually after manifest generation
 				TotalSize:    uint64(len(data)),
 				ChunkSize:    51,
 				SHA256:       sha256Hex,

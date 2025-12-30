@@ -123,6 +123,32 @@
               Loaded: {{ localFileName }} ({{ formatBytes(localFileData?.length || 0) }})
             </p>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-purple-200 mb-2">
+              Sync Speed Override (tx/s)
+            </label>
+            <div class="flex gap-2 items-center">
+              <input
+                type="number"
+                v-model.number="devSyncSpeed"
+                min="1"
+                max="1000"
+                placeholder="Auto (default)"
+                class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                @click="devSyncSpeed = null"
+                class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
+                title="Reset to default"
+              >
+                Reset
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-purple-300">
+              Override sync speed for testing. Default: 50 tx/s (public) or 10 tx/s (custom). 
+              {{ devSyncSpeed ? `Current: ${devSyncSpeed} tx/s` : 'Using default rate limiting' }}
+            </p>
+          </div>
           <div class="pt-2 border-t border-purple-700/50">
             <p class="text-xs text-purple-300">
               💡 This mode allows you to test games locally before uploading to the blockchain. 
@@ -181,7 +207,7 @@
       </div>
 
       <!-- Main Content Grid: Manifest + DOS side by side -->
-      <div class="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-6 mb-6">
+      <div class="grid grid-cols-1 lg:grid-cols-[0.8fr_1.7fr] gap-6 mb-6">
         <!-- Manifest Card -->
         <div v-if="manifest" class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow-sm dark:divide-white/10 dark:bg-gray-800/50 dark:shadow-none dark:outline dark:-outline-offset-1 dark:outline-white/10">
           <div class="px-4 py-5 sm:px-6">
@@ -207,11 +233,21 @@
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-400">SHA256</dt>
-              <dd class="mt-0.5 text-xs text-white font-mono break-all">{{ manifest.sha256 }}</dd>
+              <dd class="mt-0.5 text-xs text-white font-mono break-words">{{ formatHash(manifest.sha256) }}</dd>
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-400">Sender Address</dt>
-              <dd class="mt-0.5 text-xs text-white font-mono break-all">{{ manifest.sender_address }}</dd>
+              <dd class="mt-0.5 text-xs text-white font-mono break-words">
+                <a 
+                  :href="`https://nimiqscan.com/account/${encodeURIComponent(manifest.sender_address)}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-indigo-400 hover:text-indigo-300 hover:underline"
+                  :title="manifest.sender_address"
+                >
+                  {{ formatAddress(manifest.sender_address) }}
+                </a>
+              </dd>
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-400">Network</dt>
@@ -406,6 +442,7 @@ const loadedFromCache = ref(false)
 const developerMode = ref(false)
 const localFileData = ref(null)
 const localFileName = ref(null)
+const devSyncSpeed = ref(null) // Developer sync speed override (tx/s), null = use default
 
 // RPC endpoint configuration
 const rpcEndpoints = ref([
@@ -813,10 +850,15 @@ async function syncChunks() {
     const currentEndpoint = selectedRpcEndpoint.value === 'custom' ? customRpcEndpoint.value : selectedRpcEndpoint.value
     const isCustomEndpoint = selectedRpcEndpoint.value === 'custom' || 
                             (currentEndpoint && !currentEndpoint.includes('nimiqscan.com'))
-    const maxRequestsPerSecond = isCustomEndpoint ? 10 : 50 // 50 req/s for public, 10 for custom
+    
+    // Use developer override if set, otherwise use defaults
+    const maxRequestsPerSecond = devSyncSpeed.value !== null && devSyncSpeed.value > 0 
+      ? devSyncSpeed.value 
+      : (isCustomEndpoint ? 10 : 50) // 50 req/s for public, 10 for custom
     const delayBetweenRequests = 1000 / maxRequestsPerSecond // milliseconds
     
-    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${isCustomEndpoint ? 'custom' : 'public'} endpoint), delay: ${delayBetweenRequests.toFixed(2)}ms`)
+    const speedSource = devSyncSpeed.value !== null ? 'developer override' : (isCustomEndpoint ? 'custom endpoint' : 'public endpoint')
+    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${speedSource}), delay: ${delayBetweenRequests.toFixed(2)}ms`)
     
     // Track request times for rate limiting
     const requestTimes = []
@@ -834,7 +876,9 @@ async function syncChunks() {
         // Rate limiting: ensure we don't exceed maxRequestsPerSecond
         // Only apply delay if request was faster than the minimum delay between requests
         // This way we account for actual request time and only wait if needed
-        if (!isCustomEndpoint && i < expectedHashes.length - 1) {
+        // Apply rate limiting if: developer override is set, OR it's a public endpoint
+        const shouldRateLimit = devSyncSpeed.value !== null || !isCustomEndpoint
+        if (shouldRateLimit && i < expectedHashes.length - 1) {
           const minDelay = delayBetweenRequests
           if (requestDuration < minDelay) {
             const waitTime = minDelay - requestDuration
@@ -1119,8 +1163,24 @@ async function runGame() {
         }
       }
       
-      // Prioritize executables based on manifest filename
-      if (allExecutables.length > 0) {
+      // Check if manifest specifies the executable (highest priority)
+      if (manifest.value.executable) {
+        const specifiedExe = manifest.value.executable
+        // Check if the specified executable exists in the ZIP
+        const foundExe = allExecutables.find(exe => 
+          exe.toLowerCase() === specifiedExe.toLowerCase() ||
+          exe.toLowerCase().endsWith(specifiedExe.toLowerCase())
+        )
+        if (foundExe) {
+          gameExecutable = foundExe
+          console.log(`✓ Using manifest-specified executable: ${gameExecutable}`)
+        } else {
+          console.warn(`Manifest specifies executable "${specifiedExe}" but it was not found in ZIP. Available:`, allExecutables)
+        }
+      }
+      
+      // If no manifest-specified executable, use smart selection
+      if (!gameExecutable && allExecutables.length > 0) {
         const manifestName = manifest.value.filename.toLowerCase().replace(/\.zip$/, '')
         const manifestBase = manifestName.replace(/\d+$/, '') // Remove trailing numbers (e.g., "keen1" -> "keen")
         
@@ -2563,6 +2623,24 @@ function formatBytes(bytes) {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+function formatHash(hash) {
+  if (!hash) return ''
+  // Show first 8 and last 8 characters with ellipsis in between
+  if (hash.length > 20) {
+    return `${hash.substring(0, 8)}...${hash.substring(hash.length - 8)}`
+  }
+  return hash
+}
+
+function formatAddress(address) {
+  if (!address) return ''
+  // Show first 8 and last 8 characters with ellipsis in between
+  if (address.length > 20) {
+    return `${address.substring(0, 8)}...${address.substring(address.length - 8)}`
+  }
+  return address
 }
 
 // Developer mode functions
