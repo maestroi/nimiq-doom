@@ -16,16 +16,15 @@
         <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
           <label class="block text-sm font-medium text-gray-300 mb-2">Nimiq RPC Endpoint</label>
           <div class="flex gap-2">
-            <select
-              v-model="selectedRpcEndpoint"
-              @change="onRpcEndpointChange"
-              class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
-            >
-              <option v-for="endpoint in rpcEndpoints" :key="endpoint.url" :value="endpoint.url">
-                {{ endpoint.name }}
-              </option>
-              <option value="custom">Custom...</option>
-            </select>
+          <select
+            v-model="selectedRpcEndpoint"
+            @change="onRpcEndpointChange"
+            class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+          >
+            <option v-for="endpoint in rpcEndpoints" :key="endpoint.url" :value="endpoint.url">
+              {{ endpoint.name }}
+            </option>
+          </select>
             <input
               v-if="selectedRpcEndpoint === 'custom'"
               v-model="customRpcEndpoint"
@@ -193,6 +192,12 @@
                 <span class="text-lg font-bold text-white">{{ Math.round(syncProgressPercent) }}%</span>
                 <span class="text-xs text-gray-400 ml-1">Complete</span>
               </div>
+              <div v-if="syncProgress.rate > 0" class="text-center pt-1">
+                <span class="text-xs text-gray-400">Speed: </span>
+                <span class="text-xs text-white font-medium">{{ syncProgress.rate.toFixed(1) }} tx/s</span>
+                <span v-if="estimatedTimeRemaining !== null" class="text-xs text-gray-400 ml-2">• ETA: </span>
+                <span v-if="estimatedTimeRemaining !== null" class="text-xs text-white font-medium">{{ formatTimeRemaining(estimatedTimeRemaining) }}</span>
+              </div>
             </div>
           </div>
 
@@ -239,7 +244,9 @@ const loading = ref(false)
 const error = ref(null)
 const verified = ref(false)
 const fileData = ref(null)
-const syncProgress = ref({ fetched: 0, total: 0, bytes: 0 })
+const syncProgress = ref({ fetched: 0, total: 0, bytes: 0, rate: 0 })
+const syncStartTime = ref(null)
+const estimatedTimeRemaining = ref(null)
 const gameReady = ref(false)
 const gameContainer = ref(null)
 const dosRuntime = ref(null)
@@ -247,7 +254,6 @@ const dosRuntime = ref(null)
 // RPC endpoint configuration
 const rpcEndpoints = ref([
   { name: 'NimiqScan Mainnet', url: 'https://rpc-mainnet.nimiqscan.com' },
-  { name: 'NimiqScan Testnet', url: 'https://rpc-testnet.nimiqscan.com' },
   { name: 'Custom...', url: 'custom' }
 ])
 
@@ -260,8 +266,47 @@ const syncProgressPercent = computed(() => {
   return (syncProgress.value.fetched / syncProgress.value.total) * 100
 })
 
+// Calculate estimated time remaining and current rate
+function updateEstimatedTime() {
+  if (!syncStartTime.value || syncProgress.value.fetched === 0 || syncProgress.value.total === 0) {
+    estimatedTimeRemaining.value = null
+    syncProgress.value.rate = 0
+    return
+  }
+  
+  const elapsed = (Date.now() - syncStartTime.value) / 1000 // seconds
+  const rate = syncProgress.value.fetched / elapsed // transactions per second
+  syncProgress.value.rate = rate
+  
+  const remaining = syncProgress.value.total - syncProgress.value.fetched
+  const secondsRemaining = remaining / rate
+  
+  if (secondsRemaining > 0 && isFinite(secondsRemaining)) {
+    estimatedTimeRemaining.value = secondsRemaining
+  } else {
+    estimatedTimeRemaining.value = null
+  }
+}
+
+function formatTimeRemaining(seconds) {
+  if (!seconds || !isFinite(seconds)) return 'Calculating...'
+  
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`
+  } else if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60)
+    return `${mins}m ${secs}s`
+  } else {
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    return `${hours}h ${mins}m`
+  }
+}
+
 // Manifest files are served as static files from /manifests/
-const MANIFESTS_BASE = '/manifests/'
+// On GitHub Pages, this will be /nimiq-doom/manifests/ (base path is handled by Vite)
+const MANIFESTS_BASE = import.meta.env.BASE_URL + 'manifests/'
 
 function onRpcEndpointChange() {
   if (selectedRpcEndpoint.value !== 'custom') {
@@ -399,6 +444,8 @@ async function syncChunks() {
   loading.value = true
   error.value = null
   syncProgress.value = { fetched: 0, total: 0, bytes: 0 }
+  syncStartTime.value = Date.now()
+  estimatedTimeRemaining.value = null
   fileData.value = null
   verified.value = false
 
@@ -409,9 +456,27 @@ async function syncChunks() {
     
     syncProgress.value.total = expectedHashes.length
     
+    // Rate limiting: public endpoints get rate limited, custom endpoints don't
+    const currentEndpoint = selectedRpcEndpoint.value === 'custom' ? customRpcEndpoint.value : selectedRpcEndpoint.value
+    const isCustomEndpoint = selectedRpcEndpoint.value === 'custom' || 
+                            (currentEndpoint && !currentEndpoint.includes('nimiqscan.com'))
+    const maxRequestsPerSecond = isCustomEndpoint ? 10 : 25 // 25 req/s for public, 10 for custom
+    const delayBetweenRequests = 1000 / maxRequestsPerSecond // milliseconds
+    
+    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${isCustomEndpoint ? 'custom' : 'public'} endpoint)`)
+    
     // Fetch each transaction by hash
     for (let i = 0; i < expectedHashes.length; i++) {
       const txHash = expectedHashes[i]
+      
+      // Rate limiting: wait between requests for public endpoints
+      if (i > 0 && !isCustomEndpoint) {
+        await new Promise(resolve => setTimeout(resolve, delayBetweenRequests))
+      }
+      
+      // Update progress based on transactions processed (not chunks found)
+      syncProgress.value.fetched = i + 1
+      updateEstimatedTime()
       
       try {
         const tx = await rpcClient.getTransactionByHash(txHash)
@@ -441,10 +506,7 @@ async function syncChunks() {
         // Store chunk
         chunks.set(chunk.chunkIdx, chunk)
         
-        // Update progress
-        syncProgress.value.fetched = chunks.size
-        
-        // Calculate bytes
+        // Calculate bytes from all chunks found so far
         let bytes = 0
         for (const c of chunks.values()) {
           bytes += c.length
@@ -453,7 +515,7 @@ async function syncChunks() {
         
       } catch (err) {
         console.warn(`Failed to fetch transaction ${txHash}:`, err)
-        // Continue with other transactions
+        // Continue with other transactions - progress already updated
       }
     }
 

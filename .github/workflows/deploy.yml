@@ -41,22 +41,24 @@ jobs:
         run: npm run build
         continue-on-error: false
 
-      - name: Copy manifests
+      - name: Copy manifests to public directory
         run: |
           echo "Checking for manifests directory..."
           ls -la | grep manifests || echo "No manifests directory in root"
-          mkdir -p web/dist/manifests
+          mkdir -p web/public/manifests
           if [ -d "manifests" ] && [ "$(ls -A manifests 2>/dev/null)" ]; then
-            echo "Copying manifests..."
-            cp -r manifests/* web/dist/manifests/ 2>&1 || echo "Copy failed, but continuing"
+            echo "Copying manifests to web/public/manifests..."
+            cp -r manifests/* web/public/manifests/ 2>&1
             echo "Manifests copied successfully"
-            ls -la web/dist/manifests/ || echo "Manifests directory is empty"
+            ls -la web/public/manifests/ || echo "Manifests directory is empty"
           else
-            echo "Warning: manifests directory not found or empty, creating placeholder"
-            echo '[]' > web/dist/manifests/.gitkeep
+            echo "Warning: manifests directory not found or empty"
           fi
-          echo "Verifying dist structure..."
-          ls -la web/dist/ || echo "Dist directory check failed"
+      
+      - name: Verify manifests before build
+        run: |
+          echo "Verifying manifests in public directory..."
+          ls -la web/public/manifests/ 2>/dev/null || echo "No manifests in public directory"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
