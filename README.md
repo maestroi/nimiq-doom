@@ -2,11 +2,18 @@
 
 A project that stores DOS game files (and other binaries) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it using DOS emulators like DOSBox or JS-DOS.
 
+**🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
+
+> **Note:** If you see this README on GitHub Pages instead of the web app, go to Settings → Pages and change the Source to **"GitHub Actions"** (not "Deploy from a branch").
+
+**🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
+
 ## Architecture
 
-- **Backend** (Go): HTTP API with SQLite indexer that fetches transactions and extracts game chunks
 - **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq
-- **Web** (Vue 3): Frontend to download chunks, reconstruct files, verify SHA256, and download game packages
+- **Web** (Vue 3): Frontend that connects directly to Nimiq RPC to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using JS-DOS
+
+**Note:** The backend has been removed. The frontend now connects directly to public Nimiq RPC endpoints, making it perfect for static hosting like GitHub Pages!
 
 ## Quick Start
 
@@ -16,24 +23,25 @@ A project that stores DOS game files (and other binaries) on the Nimiq blockchai
 - Go 1.21+ (for uploader CLI)
 - Nimiq RPC endpoint (configured via environment variables)
 
-### Running Backend and Web with Docker Compose
-
-1. Copy `.env.example` to `.env` and configure:
+### Running Web Locally
 
 ```bash
-cp .env.example .env
-# Edit .env with your Nimiq RPC URL
+cd web
+npm install
+npm run dev
 ```
 
-2. Start backend and web services:
+Access the web interface at `http://localhost:5173`
+
+The frontend connects directly to public Nimiq RPC endpoints (configurable in the UI). No backend needed!
+
+### Running with Docker (Optional)
 
 ```bash
 docker compose up -d
 ```
 
-3. Access the web interface at `http://localhost:5173`
-
-The backend will start indexing blocks automatically. The web interface will load the manifest and allow you to sync chunks.
+Access at `http://localhost:5174`
 
 ### Running the Uploader
 
