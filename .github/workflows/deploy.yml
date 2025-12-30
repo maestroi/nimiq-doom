@@ -34,31 +34,30 @@ jobs:
         run: npm ci
         continue-on-error: false
 
+      - name: Copy manifests to public directory (before build)
+        run: |
+          echo "Checking for manifests directory..."
+          mkdir -p web/public/manifests
+          if [ -d "manifests" ] && [ "$(ls -A manifests 2>/dev/null)" ]; then
+            echo "Copying manifests from root manifests/ to web/public/manifests..."
+            cp -r manifests/*.json web/public/manifests/ 2>&1 || cp -r manifests/* web/public/manifests/ 2>&1
+            echo "Manifests copied successfully"
+            ls -la web/public/manifests/
+          else
+            echo "Warning: manifests directory not found or empty"
+          fi
+      
       - name: Build
         working-directory: ./web
         env:
           GITHUB_PAGES: true
         run: npm run build
         continue-on-error: false
-
-      - name: Copy manifests to public directory
-        run: |
-          echo "Checking for manifests directory..."
-          ls -la | grep manifests || echo "No manifests directory in root"
-          mkdir -p web/public/manifests
-          if [ -d "manifests" ] && [ "$(ls -A manifests 2>/dev/null)" ]; then
-            echo "Copying manifests to web/public/manifests..."
-            cp -r manifests/* web/public/manifests/ 2>&1
-            echo "Manifests copied successfully"
-            ls -la web/public/manifests/ || echo "Manifests directory is empty"
-          else
-            echo "Warning: manifests directory not found or empty"
-          fi
       
-      - name: Verify manifests before build
+      - name: Verify manifests in dist
         run: |
-          echo "Verifying manifests in public directory..."
-          ls -la web/public/manifests/ 2>/dev/null || echo "No manifests in public directory"
+          echo "Verifying manifests in dist directory..."
+          ls -la web/dist/manifests/ 2>/dev/null || echo "No manifests in dist directory"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
