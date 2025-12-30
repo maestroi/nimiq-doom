@@ -36,16 +36,20 @@ jobs:
 
       - name: Copy manifests to public directory (before build)
         run: |
-          echo "Checking for manifests directory..."
+          echo "Checking for manifests directories..."
           mkdir -p web/public/manifests
+          # Try root manifests/ first
           if [ -d "manifests" ] && [ "$(ls -A manifests 2>/dev/null)" ]; then
             echo "Copying manifests from root manifests/ to web/public/manifests..."
             cp -r manifests/*.json web/public/manifests/ 2>&1 || cp -r manifests/* web/public/manifests/ 2>&1
-            echo "Manifests copied successfully"
-            ls -la web/public/manifests/
-          else
-            echo "Warning: manifests directory not found or empty"
           fi
+          # Also try web/manifests/ (for local development structure)
+          if [ -d "web/manifests" ] && [ "$(ls -A web/manifests 2>/dev/null)" ]; then
+            echo "Copying manifests from web/manifests/ to web/public/manifests..."
+            cp -r web/manifests/*.json web/public/manifests/ 2>&1 || cp -r web/manifests/* web/public/manifests/ 2>&1
+          fi
+          echo "Verifying manifests in public directory..."
+          ls -la web/public/manifests/ || echo "Warning: No manifests found in public directory"
       
       - name: Build
         working-directory: ./web

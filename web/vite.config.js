@@ -14,4 +14,7 @@ export default defineConfig({
   },
   // Ensure manifests are copied from public directory
   publicDir: 'public',
+  build: {
+    copyPublicDir: true,
+  },
 })
