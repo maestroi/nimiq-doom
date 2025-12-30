@@ -460,26 +460,38 @@ async function syncChunks() {
     const currentEndpoint = selectedRpcEndpoint.value === 'custom' ? customRpcEndpoint.value : selectedRpcEndpoint.value
     const isCustomEndpoint = selectedRpcEndpoint.value === 'custom' || 
                             (currentEndpoint && !currentEndpoint.includes('nimiqscan.com'))
-    const maxRequestsPerSecond = isCustomEndpoint ? 10 : 25 // 25 req/s for public, 10 for custom
+    const maxRequestsPerSecond = isCustomEndpoint ? 10 : 50 // 50 req/s for public, 10 for custom
     const delayBetweenRequests = 1000 / maxRequestsPerSecond // milliseconds
     
-    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${isCustomEndpoint ? 'custom' : 'public'} endpoint)`)
+    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${isCustomEndpoint ? 'custom' : 'public'} endpoint), delay: ${delayBetweenRequests.toFixed(2)}ms`)
+    
+    // Track request times for rate limiting
+    const requestTimes = []
     
     // Fetch each transaction by hash
     for (let i = 0; i < expectedHashes.length; i++) {
       const txHash = expectedHashes[i]
-      
-      // Rate limiting: wait between requests for public endpoints
-      if (i > 0 && !isCustomEndpoint) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenRequests))
-      }
-      
-      // Update progress based on transactions processed (not chunks found)
-      syncProgress.value.fetched = i + 1
-      updateEstimatedTime()
+      const requestStartTime = Date.now()
       
       try {
         const tx = await rpcClient.getTransactionByHash(txHash)
+        
+        const requestDuration = Date.now() - requestStartTime
+        
+        // Rate limiting: ensure we don't exceed maxRequestsPerSecond
+        // Only apply delay if request was faster than the minimum delay between requests
+        // This way we account for actual request time and only wait if needed
+        if (!isCustomEndpoint && i < expectedHashes.length - 1) {
+          const minDelay = delayBetweenRequests
+          if (requestDuration < minDelay) {
+            const waitTime = minDelay - requestDuration
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+          }
+        }
+        
+        // Update progress after successful fetch
+        syncProgress.value.fetched = i + 1
+        updateEstimatedTime()
         
         // Get transaction data (recipientData or data field)
         const txData = tx.recipientData || tx.data || ''
@@ -515,7 +527,9 @@ async function syncChunks() {
         
       } catch (err) {
         console.warn(`Failed to fetch transaction ${txHash}:`, err)
-        // Continue with other transactions - progress already updated
+        // Update progress even if fetch failed
+        syncProgress.value.fetched = i + 1
+        updateEstimatedTime()
       }
     }
 
