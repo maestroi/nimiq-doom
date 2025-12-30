@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -26,14 +27,17 @@ type UploadProgress struct {
 
 func newUploadCmd() *cobra.Command {
 	var (
-		filePath  string
-		gameID    uint32
-		sender    string
-		receiver  string
-		dryRun    bool
-		rateLimit float64
-		rpcURL    string
-		fee       int64
+		filePath         string
+		gameID           uint32
+		sender           string
+		receiver         string
+		dryRun           bool
+		rateLimit        float64
+		rpcURL           string
+		fee              int64
+		generateManifest bool
+		manifestOutput   string
+		network          string
 	)
 
 	cmd := &cobra.Command{
@@ -183,6 +187,15 @@ func newUploadCmd() *cobra.Command {
 				if len(progress.FailedChunks) > 0 {
 					fmt.Printf("Failed chunks: %v\n", progress.FailedChunks)
 				}
+
+				// Generate manifest automatically after successful upload
+				if generateManifest {
+					if err := generateManifestAfterUpload(filePath, gameID, sender, network, manifestOutput, progressFile); err != nil {
+						fmt.Printf("Warning: Failed to generate manifest: %v\n", err)
+					} else {
+						fmt.Printf("\n✓ Manifest generated: %s\n", manifestOutput)
+					}
+				}
 			}
 
 			return nil
@@ -197,6 +210,9 @@ func newUploadCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&rateLimit, "rate", 1.0, "Transaction rate limit (tx/s)")
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
 	cmd.Flags().Int64Var(&fee, "fee", 0, "Transaction fee in Luna (default: 0, minimum)")
+	cmd.Flags().BoolVar(&generateManifest, "manifest", true, "Generate manifest.json after upload completes")
+	cmd.Flags().StringVar(&manifestOutput, "manifest-output", "", "Manifest output file (default: manifest.json)")
+	cmd.Flags().StringVar(&network, "network", "", "Network for manifest (mainnet/testnet) (or set NIMIQ_NETWORK)")
 
 	cmd.MarkFlagRequired("file")
 	cmd.MarkFlagRequired("game-id")
@@ -213,4 +229,78 @@ func saveProgress(filename string, progress *UploadProgress) {
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		fmt.Printf("Warning: failed to save progress: %v\n", err)
 	}
+}
+
+func generateManifestAfterUpload(filePath string, gameID uint32, sender string, network string, output string, progressFile string) error {
+	// Determine network
+	if network == "" {
+		network = os.Getenv("NIMIQ_NETWORK")
+		if network == "" {
+			network = "mainnet" // default to mainnet
+		}
+	}
+
+	// Read file
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Calculate SHA256
+	hash := sha256.Sum256(data)
+	sha256Hex := fmt.Sprintf("%x", hash)
+
+	// Get filename
+	filename := filePath
+	if info, err := os.Stat(filePath); err == nil {
+		filename = info.Name()
+	}
+
+	manifest := Manifest{
+		GameID:        gameID,
+		Filename:      filename,
+		TotalSize:     uint64(len(data)),
+		ChunkSize:     51,
+		SHA256:        sha256Hex,
+		SenderAddress: sender,
+		Network:       network,
+	}
+
+	// Load transaction hashes from progress file
+	if progressData, err := os.ReadFile(progressFile); err == nil {
+		var progress struct {
+			Plan []struct {
+				TxHash string `json:"tx_hash"`
+			} `json:"plan"`
+		}
+		if err := json.Unmarshal(progressData, &progress); err == nil {
+			// Extract transaction hashes from progress file
+			var txHashes []string
+			for _, planItem := range progress.Plan {
+				if planItem.TxHash != "" {
+					txHashes = append(txHashes, planItem.TxHash)
+				}
+			}
+			if len(txHashes) > 0 {
+				manifest.ExpectedTxHashes = txHashes
+			}
+		}
+	}
+
+	// Determine output filename
+	if output == "" {
+		output = "manifest.json"
+	}
+
+	// Write manifest
+	manifestJSON, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	if err := os.WriteFile(output, manifestJSON, 0644); err != nil {
+		return fmt.Errorf("failed to write manifest: %w", err)
+	}
+
+	return nil
 }

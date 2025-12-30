@@ -7,18 +7,20 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type API struct {
-	db          *DB
-	manifestPath string
+	db            *DB
+	manifestsDir  string
 }
 
-func NewAPI(db *DB, manifestPath string) *API {
+func NewAPI(db *DB, manifestsDir string) *API {
 	return &API{
-		db:          db,
-		manifestPath: manifestPath,
+		db:           db,
+		manifestsDir: manifestsDir,
 	}
 }
 
@@ -65,16 +67,94 @@ type VerifyResponse struct {
 	ExpectedSHA string `json:"expected_sha,omitempty"`
 }
 
-func (api *API) GetManifest(w http.ResponseWriter, r *http.Request) {
-	data, err := os.ReadFile(api.manifestPath)
+// GetManifestsList returns a list of all available manifests
+func (api *API) GetManifestsList(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(api.manifestsDir)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to read manifests directory: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	var manifests []map[string]interface{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+			continue
+		}
+
+		manifestPath := filepath.Join(api.manifestsDir, entry.Name())
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			continue // Skip files we can't read
+		}
+
+		var manifest Manifest
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			continue // Skip invalid JSON
+		}
+
+		manifests = append(manifests, map[string]interface{}{
+			"name":         strings.TrimSuffix(entry.Name(), ".json"),
+			"game_id":      manifest.GameID,
+			"filename":     manifest.Filename,
+			"total_size":   manifest.TotalSize,
+			"chunk_size":   manifest.ChunkSize,
+			"network":      manifest.Network,
+			"sender_address": manifest.SenderAddress,
+			"tx_count":     len(manifest.ExpectedTxHashes),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"manifests": manifests,
+	})
+}
+
+// getManifestByName is a helper to load a manifest by name
+func (api *API) getManifestByName(name string) (*Manifest, error) {
+	if name == "" {
+		// Default to first manifest
+		entries, err := os.ReadDir(api.manifestsDir)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+				name = strings.TrimSuffix(entry.Name(), ".json")
+				break
+			}
+		}
+		if name == "" {
+			return nil, fmt.Errorf("no manifests found")
+		}
+	}
+
+	// Sanitize manifest name
+	name = strings.ReplaceAll(name, "/", "")
+	name = strings.ReplaceAll(name, "..", "")
+	
+	manifestPath := filepath.Join(api.manifestsDir, name+".json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, err
 	}
 
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse manifest: %v", err), http.StatusInternalServerError)
+		return nil, err
+	}
+
+	return &manifest, nil
+}
+
+func (api *API) GetManifest(w http.ResponseWriter, r *http.Request) {
+	manifestName := r.URL.Query().Get("name")
+	manifest, err := api.getManifestByName(manifestName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load manifest: %v", err), http.StatusNotFound)
 		return
 	}
 
@@ -83,24 +163,22 @@ func (api *API) GetManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetStatus(w http.ResponseWriter, r *http.Request) {
+	manifestName := r.URL.Query().Get("manifest")
+	if manifestName == "" {
+		http.Error(w, "manifest parameter is required", http.StatusBadRequest)
+		return
+	}
+	manifest, err := api.getManifestByName(manifestName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load manifest: %v", err), http.StatusNotFound)
+		return
+	}
+
 	// Get max height from chunks (since we're no longer doing block polling)
 	height, err := api.db.GetMaxChunkHeight()
 	if err != nil {
 		// If no chunks exist, default to 0
 		height = 0
-	}
-
-	// Get manifest to determine game_id
-	data, err := os.ReadFile(api.manifestPath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse manifest: %v", err), http.StatusInternalServerError)
-		return
 	}
 
 	chunkCount, err := api.db.GetChunkCount(manifest.GameID)
@@ -120,16 +198,14 @@ func (api *API) GetStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetChunks(w http.ResponseWriter, r *http.Request) {
-	// Get manifest
-	data, err := os.ReadFile(api.manifestPath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
+	manifestName := r.URL.Query().Get("manifest")
+	if manifestName == "" {
+		http.Error(w, "manifest parameter is required", http.StatusBadRequest)
 		return
 	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse manifest: %v", err), http.StatusInternalServerError)
+	manifest, err := api.getManifestByName(manifestName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load manifest: %v", err), http.StatusNotFound)
 		return
 	}
 
@@ -177,16 +253,10 @@ func (api *API) GetChunks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetChunksRaw(w http.ResponseWriter, r *http.Request) {
-	// Get manifest
-	data, err := os.ReadFile(api.manifestPath)
+	manifestName := r.URL.Query().Get("manifest")
+	manifest, err := api.getManifestByName(manifestName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse manifest: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to load manifest: %v", err), http.StatusNotFound)
 		return
 	}
 
@@ -205,16 +275,10 @@ func (api *API) GetChunksRaw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) Verify(w http.ResponseWriter, r *http.Request) {
-	// Get manifest
-	data, err := os.ReadFile(api.manifestPath)
+	manifestName := r.URL.Query().Get("manifest")
+	manifest, err := api.getManifestByName(manifestName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse manifest: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to load manifest: %v", err), http.StatusNotFound)
 		return
 	}
 

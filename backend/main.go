@@ -20,9 +20,8 @@ func main() {
 	var (
 		port              = flag.String("port", "8080", "HTTP server port")
 		nimiqRPCURL      = flag.String("rpc-url", "", "Nimiq RPC URL (or set NIMIQ_RPC_URL)")
-		indexStartHeight = flag.Int64("index-start-height", 0, "Start indexing from this height (or set INDEX_START_HEIGHT)")
 		pollInterval     = flag.Int("poll-interval", 2, "Poll interval in seconds (or set POLL_INTERVAL_SECONDS)")
-		manifestPath     = flag.String("manifest", "./manifest.json", "Path to manifest.json")
+		manifestsDir     = flag.String("manifests", "./manifests", "Path to manifests directory")
 		dbPath           = flag.String("db", "./data/chunks.db", "Path to SQLite database")
 	)
 	flag.Parse()
@@ -31,19 +30,22 @@ func main() {
 	if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
 		*nimiqRPCURL = url
 	}
-	if h := os.Getenv("INDEX_START_HEIGHT"); h != "" {
-		if parsed, err := strconv.ParseInt(h, 10, 64); err == nil {
-			*indexStartHeight = parsed
-		}
-	}
 	if p := os.Getenv("POLL_INTERVAL_SECONDS"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil {
 			*pollInterval = parsed
 		}
 	}
+	if d := os.Getenv("MANIFESTS_DIR"); d != "" {
+		*manifestsDir = d
+	}
 
 	if *nimiqRPCURL == "" {
 		log.Fatal("NIMIQ_RPC_URL must be set")
+	}
+
+	// Create manifests directory if it doesn't exist
+	if err := os.MkdirAll(*manifestsDir, 0755); err != nil {
+		log.Fatalf("Failed to create manifests directory: %v", err)
 	}
 
 	// Initialize database
@@ -56,8 +58,8 @@ func main() {
 	// Initialize Nimiq RPC client
 	rpcClient := NewNimiqRPC(*nimiqRPCURL)
 
-	// Initialize indexer (startHeight no longer used - we fetch transactions directly by hash)
-	indexer := NewIndexer(db, rpcClient, time.Duration(*pollInterval)*time.Second, *manifestPath)
+	// Initialize indexer for all manifests in the directory
+	indexer := NewIndexer(db, rpcClient, time.Duration(*pollInterval)*time.Second, *manifestsDir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -69,7 +71,7 @@ func main() {
 	}()
 
 	// Initialize API
-	api := NewAPI(db, *manifestPath)
+	api := NewAPI(db, *manifestsDir)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -85,6 +87,7 @@ func main() {
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/manifests", api.GetManifestsList)
 		r.Get("/manifest", api.GetManifest)
 		r.Get("/status", api.GetStatus)
 		r.Get("/chunks", api.GetChunks)

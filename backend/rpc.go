@@ -66,7 +66,7 @@ type Transaction struct {
 	Hash          string `json:"hash"`
 	From          string `json:"from"`
 	To            string `json:"to,omitempty"`
-	Data          string `json:"data"` // hex-encoded (legacy field)
+	Data          string `json:"data"`          // hex-encoded (legacy field)
 	RecipientData string `json:"recipientData"` // hex-encoded (Nimiq format)
 	Height        int64  `json:"height,omitempty"`
 	BlockNumber   int64  `json:"blockNumber,omitempty"`

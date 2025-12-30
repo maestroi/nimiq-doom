@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 const (
-	MagicDOOM = "DOOM"
+	MagicDOOM = "DOOM" // Magic bytes for game chunks (kept for compatibility)
 	ChunkSize = 51
 )
 
@@ -19,15 +21,15 @@ type Indexer struct {
 	db           *DB
 	rpc          *NimiqRPC
 	pollInterval time.Duration
-	manifestPath string // Path to manifest file for expected tx hashes
+	manifestsDir string // Path to manifests directory
 }
 
-func NewIndexer(db *DB, rpc *NimiqRPC, pollInterval time.Duration, manifestPath string) *Indexer {
+func NewIndexer(db *DB, rpc *NimiqRPC, pollInterval time.Duration, manifestsDir string) *Indexer {
 	return &Indexer{
 		db:           db,
 		rpc:          rpc,
 		pollInterval: pollInterval,
-		manifestPath: manifestPath,
+		manifestsDir: manifestsDir,
 	}
 }
 
@@ -107,14 +109,46 @@ func (idx *Indexer) processTransaction(tx Transaction, height int64) error {
 	return nil
 }
 
-// fetchExpectedTransactions fetches transactions by address and filters by known hashes
+// fetchExpectedTransactions fetches transactions for all manifests in the directory
 func (idx *Indexer) fetchExpectedTransactions(ctx context.Context) error {
-	if idx.manifestPath == "" {
-		return nil // No manifest path provided
+	if idx.manifestsDir == "" {
+		return nil // No manifests directory provided
 	}
 
+	// Read all manifest files from directory
+	entries, err := os.ReadDir(idx.manifestsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read manifests directory: %w", err)
+	}
+
+	var allProcessed int
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+			continue
+		}
+
+		manifestPath := filepath.Join(idx.manifestsDir, entry.Name())
+		if err := idx.fetchManifestTransactions(ctx, manifestPath); err != nil {
+			log.Printf("Warning: failed to fetch transactions for manifest %s: %v", entry.Name(), err)
+			continue
+		}
+		allProcessed++
+	}
+
+	if allProcessed > 0 {
+		log.Printf("Processed transactions for %d manifest(s)", allProcessed)
+	}
+
+	return nil
+}
+
+// fetchManifestTransactions fetches transactions for a single manifest file
+func (idx *Indexer) fetchManifestTransactions(ctx context.Context, manifestPath string) error {
 	// Read manifest
-	data, err := os.ReadFile(idx.manifestPath)
+	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return fmt.Errorf("failed to read manifest: %w", err)
 	}
@@ -157,7 +191,7 @@ func (idx *Indexer) fetchExpectedTransactions(ctx context.Context) error {
 	}
 
 	// Fetch each expected transaction directly by hash (more reliable)
-	log.Printf("Fetching %d expected transactions by hash", len(manifest.ExpectedTxHashes))
+	log.Printf("Fetching %d expected transactions by hash for game_id=%d", len(manifest.ExpectedTxHashes), manifest.GameID)
 	processedCount := 0
 	for _, txHash := range manifest.ExpectedTxHashes {
 		if indexedMap[txHash] {
@@ -187,19 +221,7 @@ func (idx *Indexer) fetchExpectedTransactions(ctx context.Context) error {
 	}
 
 	if processedCount > 0 {
-		log.Printf("Processed %d expected transactions from sender address", processedCount)
-	}
-
-	// Check what's still missing
-	missingCount := 0
-	for _, txHash := range manifest.ExpectedTxHashes {
-		if !indexedMap[txHash] {
-			missingCount++
-		}
-	}
-
-	if missingCount > 0 {
-		log.Printf("Still missing %d expected transactions (may not be confirmed yet)", missingCount)
+		log.Printf("Processed %d expected transactions for game_id=%d", processedCount, manifest.GameID)
 	}
 
 	return nil

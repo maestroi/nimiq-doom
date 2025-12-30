@@ -9,7 +9,7 @@ services:
       - NIMIQ_RPC_URL=http://192.168.50.99:8648
       - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS:-2}
     volumes:
-      - ./manifest.json:/app/manifest.json:ro
+      - ./manifests:/app/manifests:ro
       - backend-data:/app/data
     restart: unless-stopped
     healthcheck:

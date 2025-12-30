@@ -16,6 +16,7 @@ func main() {
 	rootCmd.AddCommand(newUploadCmd())
 	rootCmd.AddCommand(newManifestCmd())
 	rootCmd.AddCommand(newAccountCmd())
+	rootCmd.AddCommand(newPackageCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

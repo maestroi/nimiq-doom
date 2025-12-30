@@ -1,12 +1,12 @@
-# Nimiq DOOM Onchain
+# Nimiq DOS Games Onchain
 
-A meme project that stores binary files (like DOOM WAD files) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it in the browser using JS-DOS.
+A project that stores DOS game files (and other binaries) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it using DOS emulators like DOSBox or JS-DOS.
 
 ## Architecture
 
-- **Backend** (Go): HTTP API with SQLite indexer that polls Nimiq blocks and extracts DOOM chunks
+- **Backend** (Go): HTTP API with SQLite indexer that fetches transactions and extracts game chunks
 - **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq
-- **Web** (Vue 3): Frontend to download chunks, reconstruct files, verify SHA256, and run DOOM
+- **Web** (Vue 3): Frontend to download chunks, reconstruct files, verify SHA256, and download game packages
 
 ## Quick Start
 
@@ -152,6 +152,58 @@ This will create a new account and display the address, public key, and private 
 The private key should be in hexadecimal format (with or without `0x` prefix).
 
 **Note:** After importing, you may need to unlock the account using your Nimiq RPC node's unlock method (not included in this tool).
+
+## Packaging DOS Games
+
+Before uploading to the blockchain, package your DOS game files into a ZIP file that's compatible with JS-DOS:
+
+### Using the Package Script
+
+```bash
+# Package a directory of game files
+./scripts/package-game.sh ./doom-files
+
+# Specify output filename
+./scripts/package-game.sh ./doom-files doom.zip
+
+# Specify game executable explicitly
+./scripts/package-game.sh ./doom-files doom.zip DOOM.EXE
+```
+
+The script will:
+- Create a ZIP file with all game files
+- Auto-detect the game executable (.exe, .com, or .bat)
+- Calculate SHA256 hash
+- Ensure proper file structure for JS-DOS emulator
+
+### Using the Go Package Tool Directly
+
+```bash
+cd uploader
+go run package.go --dir ./doom-files --output doom.zip --exe DOOM.EXE
+```
+
+**Important:** The ZIP file should contain:
+- Game executable (.exe, .com, or .bat)
+- Game data files (.WAD, .DAT, etc.)
+- Any other required files
+
+The ZIP structure will be preserved, and JS-DOS will be able to extract and run the game directly in the browser after syncing from the blockchain.
+
+### Handling IMG Disk Images
+
+Some DOS games come as IMG disk image files. To package them:
+
+```bash
+# Try to extract and package automatically
+./scripts/extract-img.sh DiggerRem.img extracted-files
+./scripts/package-game.sh extracted-files DiggerRem.zip DIGGER.EXE
+
+# Or use the Digger-specific script
+./scripts/package-digger.sh DiggerRem.img DiggerRem.zip
+```
+
+The extraction script will try multiple methods (mtools, 7z, Python) to extract files from the IMG. If extraction fails, the IMG file can be packaged as-is - the frontend will automatically mount it using `imgmount` when detected.
 
 ## Uploading Files
 
