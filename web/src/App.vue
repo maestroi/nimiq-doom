@@ -29,6 +29,16 @@
                 class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[200px]"
               />
             </div>
+            <!-- Developer Mode Toggle (hidden, activated with Ctrl+Shift+D) -->
+            <button
+              @click="developerMode = !developerMode"
+              class="text-xs px-2 py-1 rounded border border-gray-600 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-300"
+              title="Developer Mode (Ctrl+Shift+D)"
+            >
+              <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+            </button>
             <!-- Program Selection -->
             <div v-if="manifests.length > 0" class="flex items-center gap-2">
               <label class="text-xs font-medium text-gray-400 whitespace-nowrap">Program:</label>
@@ -64,6 +74,64 @@
 
     <!-- Main Content -->
     <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Developer Mode Panel -->
+      <div v-if="developerMode" class="mb-6 rounded-md bg-purple-900/30 border border-purple-700 p-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-purple-200">🧪 Developer Mode</h3>
+          <button
+            @click="developerMode = false"
+            class="text-purple-400 hover:text-purple-300"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-purple-200 mb-2">
+              Test Local Game File (ZIP)
+            </label>
+            <div class="flex gap-2">
+              <input
+                type="file"
+                ref="localFileInput"
+                @change="handleLocalFileUpload"
+                accept=".zip"
+                class="hidden"
+                id="local-file-input"
+              />
+              <label
+                for="local-file-input"
+                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800 cursor-pointer"
+              >
+                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                {{ localFileName || 'Choose ZIP file...' }}
+              </label>
+              <button
+                v-if="localFileData"
+                @click="runLocalGame"
+                :disabled="loading || gameReady"
+                class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Run Local Game
+              </button>
+            </div>
+            <p v-if="localFileName" class="mt-2 text-xs text-purple-300">
+              Loaded: {{ localFileName }} ({{ formatBytes(localFileData?.length || 0) }})
+            </p>
+          </div>
+          <div class="pt-2 border-t border-purple-700/50">
+            <p class="text-xs text-purple-300">
+              💡 This mode allows you to test games locally before uploading to the blockchain. 
+              Upload a ZIP file containing your DOS game files and run it directly.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- How It Works Info -->
       <div class="mb-6 rounded-md bg-blue-900/30 border border-blue-700 p-4">
         <details class="cursor-pointer">
@@ -221,17 +289,38 @@
           </div>
           <div class="px-4 py-4 sm:px-6">
             <!-- Download Program Button -->
-            <button
-              @click="syncChunks"
-              :disabled="!manifest || loading"
-              class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <div class="flex gap-2">
+              <button
+                @click="syncChunks"
+                :disabled="!manifest || loading"
+                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ verified && fileData ? 'Re-sync' : 'Download Program' }}
+              </button>
+              <button
+                v-if="verified && fileData"
+                @click="clearCacheAndResync"
+                :disabled="loading"
+                class="px-3 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Clear cache and re-sync from blockchain"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+            <!-- Cache indicator -->
+            <div v-if="verified && fileData" class="mt-2 text-xs text-green-400 flex items-center">
+              <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
               </svg>
-              Download Program
-            </button>
+              <span v-if="loadedFromCache">Loaded from cache</span>
+              <span v-else>Synced from blockchain</span>
+            </div>
           </div>
         </div>
 
@@ -254,6 +343,7 @@
             <!-- Action Buttons -->
             <div class="flex flex-wrap gap-3">
               <button
+                v-if="!gameReady"
                 @click="runGame"
                 :disabled="!verified || loading"
                 class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -263,6 +353,17 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Run Program
+              </button>
+              <button
+                v-else
+                @click="stopGame"
+                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+              >
+                <svg class="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
+                </svg>
+                Stop Emulation
               </button>
               <button
                 @click="downloadFile"
@@ -283,7 +384,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { NimiqRPC } from './nimiq-rpc.js'
 
 const manifest = ref(null)
@@ -299,6 +400,12 @@ const estimatedTimeRemaining = ref(null)
 const gameReady = ref(false)
 const gameContainer = ref(null)
 const dosRuntime = ref(null)
+const dosPromise = ref(null) // Store the Dos promise to properly terminate
+const dosCi = ref(null) // Store the Command Interface for proper termination
+const loadedFromCache = ref(false)
+const developerMode = ref(false)
+const localFileData = ref(null)
+const localFileName = ref(null)
 
 // RPC endpoint configuration
 const rpcEndpoints = ref([
@@ -357,6 +464,152 @@ function formatTimeRemaining(seconds) {
 // On GitHub Pages, this will be /nimiq-doom/manifests/ (base path is handled by Vite)
 const MANIFESTS_BASE = import.meta.env.BASE_URL + 'manifests/'
 
+// Cache management using IndexedDB
+const CACHE_DB_NAME = 'nimiq-doom-cache'
+const CACHE_DB_VERSION = 1
+const CACHE_STORE_NAME = 'game-files'
+
+// Initialize IndexedDB cache
+let cacheDB = null
+async function initCache() {
+  if (cacheDB) return cacheDB
+  
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION)
+    
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      cacheDB = request.result
+      resolve(cacheDB)
+    }
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result
+      if (!db.objectStoreNames.contains(CACHE_STORE_NAME)) {
+        db.createObjectStore(CACHE_STORE_NAME, { keyPath: 'key' })
+      }
+    }
+  })
+}
+
+// Get cache key from manifest
+function getCacheKey(manifest) {
+  if (!manifest) return null
+  // Use manifest name + SHA256 to invalidate cache if manifest changes
+  return `${manifest.game_id || 'unknown'}_${manifest.sha256 || 'unknown'}`
+}
+
+// Load file from cache
+async function loadFromCache(manifest) {
+  try {
+    const db = await initCache()
+    const key = getCacheKey(manifest)
+    if (!key) return null
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([CACHE_STORE_NAME], 'readonly')
+      const store = transaction.objectStore(CACHE_STORE_NAME)
+      const request = store.get(key)
+      
+      request.onsuccess = () => {
+        const result = request.result
+        if (result && result.data) {
+          // Convert Array back to Uint8Array
+          const uint8Array = new Uint8Array(result.data)
+          console.log(`Loaded ${manifest.filename} from cache (${uint8Array.length} bytes)`)
+          resolve(uint8Array)
+        } else {
+          resolve(null)
+        }
+      }
+      
+      request.onerror = () => reject(request.error)
+    })
+  } catch (err) {
+    console.warn('Cache load error:', err)
+    return null
+  }
+}
+
+// Save file to cache
+async function saveToCache(manifest, fileData) {
+  try {
+    const db = await initCache()
+    const key = getCacheKey(manifest)
+    if (!key || !fileData) return
+    
+    // Convert Uint8Array to Array for storage (IndexedDB doesn't support Uint8Array directly)
+    const dataArray = Array.from(fileData)
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([CACHE_STORE_NAME], 'readwrite')
+      const store = transaction.objectStore(CACHE_STORE_NAME)
+      const request = store.put({
+        key: key,
+        data: dataArray,
+        manifestName: manifest.filename || 'unknown',
+        gameId: manifest.game_id || 0,
+        timestamp: Date.now()
+      })
+      
+      request.onsuccess = () => {
+        console.log(`Saved ${manifest.filename} to cache (${fileData.length} bytes)`)
+        resolve()
+      }
+      
+      request.onerror = () => reject(request.error)
+    })
+  } catch (err) {
+    console.warn('Cache save error:', err)
+    // Don't throw - caching is optional
+  }
+}
+
+// Clear cache for a specific manifest
+async function clearCache(manifest) {
+  try {
+    const db = await initCache()
+    const key = getCacheKey(manifest)
+    if (!key) return
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([CACHE_STORE_NAME], 'readwrite')
+      const store = transaction.objectStore(CACHE_STORE_NAME)
+      const request = store.delete(key)
+      
+      request.onsuccess = () => {
+        console.log(`Cleared cache for ${manifest.filename}`)
+        resolve()
+      }
+      
+      request.onerror = () => reject(request.error)
+    })
+  } catch (err) {
+    console.warn('Cache clear error:', err)
+  }
+}
+
+// Clear all cache
+async function clearAllCache() {
+  try {
+    const db = await initCache()
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([CACHE_STORE_NAME], 'readwrite')
+      const store = transaction.objectStore(CACHE_STORE_NAME)
+      const request = store.clear()
+      
+      request.onsuccess = () => {
+        console.log('Cleared all cache')
+        resolve()
+      }
+      
+      request.onerror = () => reject(request.error)
+    })
+  } catch (err) {
+    console.warn('Cache clear all error:', err)
+  }
+}
+
 function onRpcEndpointChange() {
   if (selectedRpcEndpoint.value !== 'custom') {
     rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
@@ -374,34 +627,44 @@ async function loadManifestsList() {
   loading.value = true
   error.value = null
   try {
-    // Try to fetch a list of manifest files
-    // For now, we'll try to load common manifest names or scan a directory
-    // Since we can't list files from static hosting, we'll try known names
-    const knownManifests = ['digger', 'testfile', 'testbin']
-    const loadedManifests = []
+    // Load manifest index file that lists all available manifests
+    // This index is generated by scripts/generate-manifest-index.sh
+    const indexResponse = await fetch(`${MANIFESTS_BASE}manifests-index.json`)
     
-    for (const name of knownManifests) {
-      try {
-        const response = await fetch(`${MANIFESTS_BASE}${name}.json`)
-        if (response.ok) {
-          const manifestData = await response.json()
-          loadedManifests.push({
-            name: name,
-            game_id: manifestData.game_id,
-            filename: manifestData.filename,
-            total_size: manifestData.total_size,
-            chunk_size: manifestData.chunk_size || 51,
-            network: manifestData.network,
-            sender_address: manifestData.sender_address,
-            tx_count: manifestData.expected_tx_hashes?.length || 0
-          })
+    if (indexResponse.ok) {
+      // Load from index file
+      const indexData = await indexResponse.json()
+      manifests.value = indexData
+      console.log(`Loaded ${indexData.length} manifest(s) from index`)
+    } else {
+      // Fallback: try to load known manifests if index doesn't exist
+      console.warn('Manifest index not found, falling back to known manifests')
+      const knownManifests = ['digger', 'keen', 'testfile', 'testbin']
+      const loadedManifests = []
+      
+      for (const name of knownManifests) {
+        try {
+          const response = await fetch(`${MANIFESTS_BASE}${name}.json`)
+          if (response.ok) {
+            const manifestData = await response.json()
+            loadedManifests.push({
+              name: name,
+              game_id: manifestData.game_id,
+              filename: manifestData.filename,
+              total_size: manifestData.total_size,
+              chunk_size: manifestData.chunk_size || 51,
+              network: manifestData.network,
+              sender_address: manifestData.sender_address,
+              tx_count: manifestData.expected_tx_hashes?.length || 0
+            })
+          }
+        } catch (err) {
+          // Skip if manifest doesn't exist
         }
-      } catch (err) {
-        // Skip if manifest doesn't exist
       }
+      
+      manifests.value = loadedManifests
     }
-    
-    manifests.value = loadedManifests
     
     // Auto-select first manifest if none selected
     if (manifests.value.length > 0 && !selectedManifestName.value) {
@@ -410,6 +673,7 @@ async function loadManifestsList() {
     }
   } catch (err) {
     error.value = err.message
+    console.error('Error loading manifests:', err)
   } finally {
     loading.value = false
   }
@@ -431,8 +695,25 @@ async function loadManifest() {
     // Reset state when loading new manifest
     fileData.value = null
     verified.value = false
+    loadedFromCache.value = false
     syncProgress.value = { fetched: 0, total: 0, bytes: 0 }
     gameReady.value = false
+    
+    // Try to load from cache immediately when manifest changes
+    const cachedData = await loadFromCache(manifest.value)
+    if (cachedData) {
+      console.log('Auto-loading from cache for', manifest.value.filename)
+      fileData.value = cachedData
+      loadedFromCache.value = true
+      syncProgress.value = { 
+        fetched: manifest.value.expected_tx_hashes?.length || 0, 
+        total: manifest.value.expected_tx_hashes?.length || 0, 
+        bytes: cachedData.length,
+        rate: 0
+      }
+      // Verify cached data
+      await verifyFile()
+    }
   } catch (err) {
     error.value = err.message
   } finally {
@@ -485,13 +766,36 @@ async function syncChunks() {
     return
   }
 
+  loading.value = true
+  error.value = null
+  
+  // Try to load from cache first
+  const cachedData = await loadFromCache(manifest.value)
+  if (cachedData) {
+    console.log('Using cached file data')
+    fileData.value = cachedData
+    loadedFromCache.value = true
+    syncProgress.value = { 
+      fetched: manifest.value.expected_tx_hashes?.length || 0, 
+      total: manifest.value.expected_tx_hashes?.length || 0, 
+      bytes: cachedData.length,
+      rate: 0
+    }
+    // Verify cached data
+    await verifyFile()
+    loading.value = false
+    return
+  }
+  
+  loadedFromCache.value = false
+
+  // No cache, sync from blockchain
   if (!manifest.value.expected_tx_hashes || manifest.value.expected_tx_hashes.length === 0) {
     error.value = 'Manifest has no expected transaction hashes. Cannot sync chunks.'
+    loading.value = false
     return
   }
 
-  loading.value = true
-  error.value = null
   syncProgress.value = { fetched: 0, total: 0, bytes: 0 }
   syncStartTime.value = Date.now()
   estimatedTimeRemaining.value = null
@@ -610,6 +914,11 @@ async function syncChunks() {
       
       // Automatically verify the file after successful sync
       await verifyFile()
+      
+      // Save to cache after successful verification
+      if (verified.value) {
+        await saveToCache(manifest.value, fileData.value)
+      }
     }
   } catch (err) {
     error.value = err.message || 'Failed to sync chunks from blockchain'
@@ -639,6 +948,8 @@ async function verifyFile() {
 
     if (!verified.value) {
       error.value = `SHA256 mismatch! Expected: ${manifest.value.sha256}, Got: ${hashHex}`
+      // Clear cache if verification fails
+      await clearCache(manifest.value)
     }
   } catch (err) {
     error.value = err.message
@@ -648,6 +959,20 @@ async function verifyFile() {
       loading.value = false
     }
   }
+}
+
+// Clear cache and force re-sync
+async function clearCacheAndResync() {
+  if (!manifest.value) return
+  
+  await clearCache(manifest.value)
+  loadedFromCache.value = false
+  fileData.value = null
+  verified.value = false
+  syncProgress.value = { fetched: 0, total: 0, bytes: 0 }
+  
+  // Re-sync from blockchain
+  await syncChunks()
 }
 
 function downloadFile() {
@@ -780,17 +1105,66 @@ async function runGame() {
       const zip = await JSZip.loadAsync(fileData.value)
       
       // Extract all files
+      const allExecutables = []
       for (const [filename, file] of Object.entries(zip.files)) {
         if (!file.dir) {
           const content = await file.async('uint8array')
           gameFiles[filename] = content
           
-          // Find game executable (.exe, .com, .bat)
+          // Collect all executables (.exe, .com, .bat)
           const lowerName = filename.toLowerCase()
-          if (!gameExecutable && (lowerName.endsWith('.exe') || lowerName.endsWith('.com') || lowerName.endsWith('.bat'))) {
-            gameExecutable = filename
+          if (lowerName.endsWith('.exe') || lowerName.endsWith('.com') || lowerName.endsWith('.bat')) {
+            allExecutables.push(filename)
           }
         }
+      }
+      
+      // Prioritize executables based on manifest filename
+      if (allExecutables.length > 0) {
+        const manifestName = manifest.value.filename.toLowerCase().replace(/\.zip$/, '')
+        const manifestBase = manifestName.replace(/\d+$/, '') // Remove trailing numbers (e.g., "keen1" -> "keen")
+        
+        // Priority order:
+        // 1. Exact match with manifest name (e.g., "keen1.exe" for "keen1.zip")
+        // 2. Base name match (e.g., "keen.exe" for "keen1.zip")
+        // 3. Common game executable names (not utility files like catalog.exe, setup.exe, etc.)
+        // 4. Any other executable
+        
+        const utilityNames = ['catalog', 'setup', 'install', 'readme', 'help', 'config', 'options']
+        
+        // Try to find best match
+        let bestMatch = null
+        let bestScore = -1
+        
+        for (const exe of allExecutables) {
+          const exeLower = exe.toLowerCase().replace(/\.(exe|com|bat)$/, '')
+          let score = 0
+          
+          // Exact match with manifest name (highest priority)
+          if (exeLower === manifestName) {
+            score = 100
+          }
+          // Base name match (high priority)
+          else if (exeLower === manifestBase || exeLower.startsWith(manifestBase)) {
+            score = 80
+          }
+          // Not a utility file (medium priority)
+          else if (!utilityNames.some(util => exeLower.includes(util))) {
+            score = 50
+          }
+          // Utility file (low priority)
+          else {
+            score = 10
+          }
+          
+          if (score > bestScore) {
+            bestScore = score
+            bestMatch = exe
+          }
+        }
+        
+        gameExecutable = bestMatch || allExecutables[0]
+        console.log(`Selected executable: ${gameExecutable} from ${allExecutables.length} candidates:`, allExecutables)
       }
     } else {
       // Single file - treat as game file
@@ -836,10 +1210,15 @@ async function runGame() {
     // JS-DOS requires a canvas element to render to
     const canvas = document.createElement('canvas')
     canvas.id = 'jsdos-canvas'
+    // Set canvas size for better scaling - 640x400 is 2x of 320x200
+    // This will be scaled by DOSBox's scaler
+    canvas.width = 640
+    canvas.height = 400
     canvas.style.width = '100%'
     canvas.style.height = 'auto'
     canvas.style.display = 'block'
     canvas.style.maxWidth = '100%'
+    canvas.style.imageRendering = 'pixelated' // Keep pixel art crisp
     gameContainer.value.appendChild(canvas)
     
     gameReady.value = true
@@ -868,6 +1247,7 @@ async function runGame() {
       // JS-DOS uses .ready() callback that provides fs and main
       return new Promise((resolve, reject) => {
         const dosboxPromise = Dos(canvasElement, options)
+        dosPromise.value = dosboxPromise // Store promise for proper termination
         
         dosboxPromise.ready((fs, main) => {
           console.log('JS-DOS ready callback called')
@@ -901,9 +1281,13 @@ async function runGame() {
       const result = await initDos({
         wdosboxUrl: 'https://js-dos.com/cdn/6.22/wdosbox.js',
         wdosboxWasmUrl: 'https://js-dos.com/cdn/6.22/wdosbox.wasm',
+        onprogress: (stage, total, loaded) => {
+          console.log(`Loading DOSBox: ${stage} ${loaded}/${total}`)
+        }
       })
       dosbox = result.dosbox
       ci = result.ci
+      dosCi.value = result.ci // Store CI for termination
       fs = result.fs
       main = result.main
       console.log('Successfully initialized with js-dos.com CDN')
@@ -914,9 +1298,13 @@ async function runGame() {
         const result = await initDos({
           wdosboxUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.js',
           wdosboxWasmUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.wasm',
+          onprogress: (stage, total, loaded) => {
+            console.log(`Loading DOSBox: ${stage} ${loaded}/${total}`)
+          }
         })
         dosbox = result.dosbox
         ci = result.ci
+        dosCi.value = result.ci // Store CI for termination
         fs = result.fs
         main = result.main
         console.log('Successfully initialized with unpkg CDN')
@@ -925,6 +1313,102 @@ async function runGame() {
         throw new Error(`Failed to initialize JS-DOS: ${err2?.message || String(err2)}`)
       }
     }
+    
+    // Create DOSBox configuration file for better screen resolution and scaling
+    // This will be written after filesystem is ready
+    const dosboxConfig = `[sdl]
+fullscreen=false
+fulldouble=false
+fullresolution=desktop
+windowresolution=1024x768
+output=opengl
+autolock=true
+sensitivity=100
+waitonerror=true
+priority=higher,normal
+mapperfile=mapper-jsdos.map
+usescancodes=true
+
+[render]
+frameskip=0
+aspect=true
+scaler=normal3x
+# Available scalers: none, normal2x, normal3x, advmame2x, advmame3x, advinterp2x, advinterp3x, hq2x, hq3x, 2xsai, super2xsai, supereagle, tv2x, tv3x, rgb2x, rgb3x, scan2x, scan3x
+# normal3x will scale 320x200 to 960x600, which should fit better
+
+[cpu]
+core=auto
+cputype=auto
+cycles=auto
+cycleup=10
+cycledown=20
+
+[mixer]
+nosound=false
+rate=22050
+blocksize=2048
+prebuffer=25
+
+[midi]
+mpu401=intelligent
+mididevice=default
+midiconfig=
+
+[sblaster]
+sbtype=sb16
+sbbase=220
+irq=7
+dma=1
+hdma=5
+sbmixer=true
+oplmode=auto
+oplemu=default
+oplrate=22050
+
+[gus]
+gus=false
+gusbase=240
+gusirq=5
+gusdma=3
+ultradir=C:\\ULTRASND
+
+[speaker]
+pcspeaker=true
+pcrate=22050
+tandy=auto
+tandyrate=22050
+disney=true
+
+[joystick]
+joysticktype=auto
+timed=false
+autofire=false
+swap34=false
+buttonwrap=false
+
+[serial]
+serial1=dummy
+serial2=dummy
+serial3=disabled
+serial4=disabled
+
+[parallel]
+parallel1=printer
+parallel2=disabled
+parallel3=disabled
+
+[dos]
+xms=true
+ems=true
+umb=true
+keyboardlayout=auto
+
+[ipx]
+ipx=false
+
+[autoexec]
+# Autoexec commands will be added by the game loading code
+`
 
     // Log what we have available
     console.log('Initialization complete:')
@@ -935,6 +1419,23 @@ async function runGame() {
     
     if (!fs || !main) {
       throw new Error('JS-DOS initialization incomplete: fs or main not available')
+    }
+    
+    // Write DOSBox configuration file for better screen resolution and scaling
+    try {
+      console.log('Writing DOSBox configuration file...')
+      if (fs && typeof fs.createFile === 'function') {
+        fs.createFile('dosbox.conf', dosboxConfig)
+        console.log('DOSBox config written via fs.createFile')
+      } else if (fs && typeof fs.fsWriteFile === 'function') {
+        await fs.fsWriteFile('dosbox.conf', dosboxConfig)
+        console.log('DOSBox config written via fs.fsWriteFile')
+      } else {
+        console.warn('Could not write DOSBox config file - using defaults')
+      }
+    } catch (err) {
+      console.warn('Error writing DOSBox config:', err)
+      // Continue anyway - DOSBox will use defaults
     }
     
     // Check if we have an IMG file that needs mounting (imgFile already declared above)
@@ -971,7 +1472,8 @@ async function runGame() {
       
       // Create AUTOEXEC.BAT with mount and run commands
       // Parameters: -size 512,8,2,384 (from DiggerRem instructions)
-      const batchContent = `@echo off\nimgmount c ${imgPath} -size 512,8,2,384\nc:\n${exeInImg}\n`
+      // Add resolution/scaler settings at the start
+      const batchContent = `@echo off\nconfig -set render scaler normal3x\nconfig -set render aspect true\nimgmount c ${imgPath} -size 512,8,2,384\nc:\n${exeInImg}\n`
       
       // Write AUTOEXEC.BAT using fs
       if (fs && typeof fs.createFile === 'function') {
@@ -983,9 +1485,9 @@ async function runGame() {
       }
       
       console.log('Created AUTOEXEC.BAT, calling main() to start DOSBox')
-      // Call main() - DOSBox will start and AUTOEXEC.BAT will run automatically
-      main(['-c', 'AUTOEXEC.BAT'])
-      console.log('Called main() for IMG')
+      // Call main() with config file - AUTOEXEC.BAT will set scaler/resolution
+      main(['-conf', 'dosbox.conf', '-c', 'AUTOEXEC.BAT'])
+      console.log('Called main() for IMG with config')
     } else {
       // Regular file mounting
       console.log('Mounting regular files, count:', Object.keys(gameFiles).length)
@@ -1042,8 +1544,9 @@ async function runGame() {
       
       try {
         // Create AUTOEXEC.BAT to auto-run the game
+        // Add resolution/scaler settings at the start for better display
         console.log('Creating AUTOEXEC.BAT with command:', command)
-        const batchContent = `@echo off\n${command}\n`
+        const batchContent = `@echo off\nconfig -set render scaler normal3x\nconfig -set render aspect true\n${command}\n`
         
         // Write AUTOEXEC.BAT using fs
         if (fs && typeof fs.createFile === 'function') {
@@ -1055,9 +1558,9 @@ async function runGame() {
         }
         
         console.log('Created AUTOEXEC.BAT, calling main() to start DOSBox')
-        // Call main() - DOSBox will start and AUTOEXEC.BAT will run automatically
-        main(['-c', 'AUTOEXEC.BAT'])
-        console.log('Called main() - DOSBox should start and run AUTOEXEC.BAT')
+        // Call main() with config file - AUTOEXEC.BAT will set scaler/resolution
+        main(['-conf', 'dosbox.conf', '-c', 'AUTOEXEC.BAT'])
+        console.log('Called main() - DOSBox should start and run AUTOEXEC.BAT with config')
       } catch (err) {
         console.error('Error running executable:', err)
         throw new Error(`Failed to run executable: ${err?.message || String(err)}`)
@@ -1078,6 +1581,982 @@ async function runGame() {
   }
 }
 
+async function stopGame() {
+  console.log('Stopping game emulation - proper termination')
+  
+  // First, try to exit DOSBox using the Command Interface (most reliable method)
+  let ci = dosCi.value
+  
+  // If CI is not stored, try to get it from main() promise
+  if (!ci && dosRuntime.value && dosRuntime.value.main) {
+    try {
+      console.log('CI not stored, trying to get it from main()...')
+      // In JS-DOS, calling main() without arguments returns a promise that resolves to CI
+      const mainResult = dosRuntime.value.main()
+      if (mainResult && typeof mainResult.then === 'function') {
+        ci = await mainResult
+        console.log('Got CI from main() promise')
+      } else if (mainResult && typeof mainResult.exit === 'function') {
+        ci = mainResult
+        console.log('Got CI directly from main()')
+      }
+    } catch (e) {
+      console.warn('Could not get CI from main():', e)
+    }
+  }
+  
+  // Try to exit using CI
+  if (ci) {
+    try {
+      console.log('Attempting to exit DOSBox via CI.exit()...')
+      if (typeof ci.exit === 'function') {
+        ci.exit()
+        console.log('✓ Called CI.exit() - DOSBox should terminate')
+        // Wait a bit for termination to complete
+        await new Promise(resolve => setTimeout(resolve, 300))
+      } else {
+        console.log('CI.exit() not available, CI methods:', Object.keys(ci).filter(k => typeof ci[k] === 'function'))
+      }
+    } catch (e) {
+      console.warn('Error calling CI.exit():', e)
+    }
+  }
+  
+  // Also try to exit via main function with exit command
+  if (dosRuntime.value && dosRuntime.value.main) {
+    try {
+      // Try to exit DOSBox via command
+      dosRuntime.value.main(['exit'])
+      console.log('Sent exit command via main()')
+      await new Promise(resolve => setTimeout(resolve, 200))
+    } catch (e) {
+      console.warn('Could not exit via main():', e)
+    }
+    
+    // Also try to mute sound before stopping
+    try {
+      dosRuntime.value.main(['mixer', 'nosound'])
+      console.log('Sent mixer nosound command')
+    } catch (e) {
+      console.warn('Could not mute sound:', e)
+    }
+  }
+  
+  // Try to send Ctrl+F9 to DOSBox (force quit)
+  if (gameContainer.value) {
+    const canvas = gameContainer.value.querySelector('#jsdos-canvas')
+    if (canvas) {
+      try {
+        // Send Ctrl+F9 key combination to force quit DOSBox
+        const ctrlF9Event = new KeyboardEvent('keydown', {
+          key: 'F9',
+          code: 'F9',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true
+        })
+        canvas.dispatchEvent(ctrlF9Event)
+        canvas.dispatchEvent(new KeyboardEvent('keyup', {
+          key: 'F9',
+          code: 'F9',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true
+        }))
+        console.log('Sent Ctrl+F9 to DOSBox')
+        
+        // Also try Alt+Pause to pause
+        const altPauseEvent = new KeyboardEvent('keydown', {
+          key: 'Pause',
+          code: 'Pause',
+          altKey: true,
+          bubbles: true,
+          cancelable: true
+        })
+        canvas.dispatchEvent(altPauseEvent)
+      } catch (e) {
+        console.warn('Could not send keyboard events:', e)
+      }
+    }
+  }
+  
+  // Stop all audio contexts and nodes to prevent sound from continuing
+  try {
+    // First, find and stop all AudioNodes (sources of sound)
+    const allAudioNodes = []
+    
+    // Try to find audio nodes in the canvas
+    if (gameContainer.value) {
+      const canvas = gameContainer.value.querySelector('canvas')
+      if (canvas) {
+        // Check for audio nodes attached to canvas
+        for (const key in canvas) {
+          if (canvas[key] && typeof canvas[key] === 'object') {
+            if (canvas[key].constructor && canvas[key].constructor.name && 
+                (canvas[key].constructor.name.includes('Audio') || 
+                 canvas[key].constructor.name.includes('Node'))) {
+              allAudioNodes.push(canvas[key])
+            }
+          }
+        }
+      }
+    }
+    
+    // Stop all audio nodes
+    allAudioNodes.forEach(node => {
+      try {
+        if (node && typeof node.stop === 'function') {
+          node.stop()
+          console.log('✓ Stopped audio node:', node.constructor.name)
+        }
+        if (node && typeof node.disconnect === 'function') {
+          node.disconnect()
+          console.log('✓ Disconnected audio node')
+        }
+      } catch (e) {
+        console.warn('Error stopping audio node:', e)
+      }
+    })
+    
+    // Stop all Web Audio API contexts
+    if (window.AudioContext || window.webkitAudioContext) {
+      const audioContexts = []
+      if (window.dosboxAudioContext) {
+        audioContexts.push(window.dosboxAudioContext)
+      }
+      if (dosRuntime.value && dosRuntime.value.audioContext) {
+        audioContexts.push(dosRuntime.value.audioContext)
+      }
+      // Try to find audio contexts in the canvas or container
+      if (gameContainer.value) {
+        const canvas = gameContainer.value.querySelector('canvas')
+        if (canvas) {
+          if (canvas._audioContext) {
+            audioContexts.push(canvas._audioContext)
+          }
+          // Check all properties for AudioContext
+          for (const key in canvas) {
+            try {
+              const obj = canvas[key]
+              if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+                audioContexts.push(obj)
+              }
+            } catch (e) {
+              // Ignore
+            }
+          }
+        }
+      }
+      
+      // Also check global scope for AudioContext instances
+      for (const key in window) {
+        try {
+          const obj = window[key]
+          if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+            audioContexts.push(obj)
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      audioContexts.forEach(ctx => {
+        try {
+          if (ctx && ctx.state !== 'closed') {
+            // Get all active source nodes and stop them
+            if (ctx.destination) {
+              try {
+                const sources = ctx.destination.inputs || []
+                sources.forEach(source => {
+                  try {
+                    if (source && typeof source.stop === 'function') {
+                      source.stop()
+                    }
+                    if (source && typeof source.disconnect === 'function') {
+                      source.disconnect()
+                    }
+                  } catch (e) {
+                    // Ignore
+                  }
+                })
+              } catch (e) {
+                // Ignore
+              }
+            }
+            
+            if (ctx && typeof ctx.suspend === 'function') {
+              ctx.suspend()
+              console.log('✓ Suspended AudioContext')
+            }
+            if (ctx && typeof ctx.close === 'function') {
+              ctx.close()
+              console.log('✓ Closed AudioContext')
+            }
+          }
+        } catch (e) {
+          console.warn('Error closing audio context:', e)
+        }
+      })
+    }
+    
+    // Stop all HTML audio elements
+    const audioElements = document.querySelectorAll('audio')
+    audioElements.forEach(audio => {
+      try {
+        audio.pause()
+        audio.currentTime = 0
+        audio.src = ''
+        audio.load()
+        console.log('✓ Stopped HTML audio element')
+      } catch (e) {
+        console.warn('Error stopping audio element:', e)
+      }
+    })
+  } catch (err) {
+    console.warn('Error stopping audio:', err)
+  }
+  
+  // Try to terminate the Dos promise first (most reliable way)
+  if (dosPromise.value) {
+    try {
+      console.log('Dos promise methods:', Object.keys(dosPromise.value))
+      console.log('Dos promise type:', typeof dosPromise.value)
+      
+      // Try all possible termination methods
+      if (typeof dosPromise.value.stop === 'function') {
+        dosPromise.value.stop()
+        console.log('Called stop() on Dos promise')
+      }
+      if (typeof dosPromise.value.terminate === 'function') {
+        dosPromise.value.terminate()
+        console.log('Called terminate() on Dos promise')
+      }
+      if (typeof dosPromise.value.destroy === 'function') {
+        dosPromise.value.destroy()
+        console.log('Called destroy() on Dos promise')
+      }
+      if (typeof dosPromise.value.close === 'function') {
+        dosPromise.value.close()
+        console.log('Called close() on Dos promise')
+      }
+      
+      // Try to access internal instance or player
+      if (dosPromise.value.instance) {
+        try {
+          if (typeof dosPromise.value.instance.stop === 'function') {
+            dosPromise.value.instance.stop()
+          }
+          if (typeof dosPromise.value.instance.terminate === 'function') {
+            dosPromise.value.instance.terminate()
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      if (dosPromise.value.player) {
+        try {
+          if (typeof dosPromise.value.player.stop === 'function') {
+            dosPromise.value.player.stop()
+            console.log('Called stop() on player')
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Try to access WASM instance through internal properties
+      const internalProps = ['_instance', '_player', '_dosbox', '_emulator', '_wasm', 'instance', 'player', 'dosbox', 'emulator']
+      for (const prop of internalProps) {
+        try {
+          const val = dosPromise.value[prop]
+          if (val) {
+            console.log(`Found ${prop} in dosPromise, type:`, typeof val)
+            if (typeof val.terminate === 'function') {
+              val.terminate()
+              console.log(`✓ Called terminate() on dosPromise.${prop}`)
+            }
+            if (typeof val.stop === 'function') {
+              val.stop()
+              console.log(`✓ Called stop() on dosPromise.${prop}`)
+            }
+            // Check for Module inside
+            if (val.Module && typeof val.Module.terminate === 'function') {
+              val.Module.terminate()
+              console.log(`✓ Called terminate() on dosPromise.${prop}.Module`)
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    } catch (err) {
+      console.warn('Error terminating Dos promise:', err)
+    }
+  }
+  
+  // Try to stop DOSBox if possible
+  if (dosRuntime.value) {
+    try {
+      // Try all possible stop methods
+      if (dosRuntime.value.stop && typeof dosRuntime.value.stop === 'function') {
+        dosRuntime.value.stop()
+      }
+      if (dosRuntime.value.exit && typeof dosRuntime.value.exit === 'function') {
+        dosRuntime.value.exit()
+      }
+      if (dosRuntime.value.terminate && typeof dosRuntime.value.terminate === 'function') {
+        dosRuntime.value.terminate()
+      }
+      if (dosRuntime.value.destroy && typeof dosRuntime.value.destroy === 'function') {
+        dosRuntime.value.destroy()
+      }
+      
+      // Try to access the underlying emulator instance
+      if (dosRuntime.value.emulator) {
+        try {
+          if (typeof dosRuntime.value.emulator.stop === 'function') {
+            dosRuntime.value.emulator.stop()
+          }
+          if (typeof dosRuntime.value.emulator.terminate === 'function') {
+            dosRuntime.value.emulator.terminate()
+          }
+        } catch (e) {
+          console.warn('Error stopping emulator:', e)
+        }
+      }
+      
+      // Try to access WASM instance
+      if (dosRuntime.value.wasm) {
+        try {
+          if (typeof dosRuntime.value.wasm.terminate === 'function') {
+            dosRuntime.value.wasm.terminate()
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Try to access fs.fs which contains the Emscripten WASM module
+      if (dosRuntime.value.fs && dosRuntime.value.fs.fs) {
+        try {
+          const fsObj = dosRuntime.value.fs.fs
+          const allKeys = Object.keys(fsObj)
+          console.log('fs.fs all keys:', allKeys)
+          console.log('fs.fs keys count:', allKeys.length)
+          
+          // Emscripten WASM modules have a Module property
+          if (fsObj.Module) {
+            console.log('Found Module in fs.fs, keys:', Object.keys(fsObj.Module))
+            if (typeof fsObj.Module.terminate === 'function') {
+              fsObj.Module.terminate()
+              console.log('✓ Terminated Module.terminate()')
+            }
+            if (typeof fsObj.Module.destroy === 'function') {
+              fsObj.Module.destroy()
+              console.log('✓ Destroyed Module.destroy()')
+            }
+            // Try to access WASM instance directly
+            if (fsObj.Module.asm) {
+              console.log('Found Module.asm')
+            }
+            // Try to find and terminate WASM instance
+            if (fsObj.Module.wasmMemory) {
+              console.log('Found Module.wasmMemory')
+            }
+          }
+          
+          // Try to access Module directly if it's a property
+          if (fsObj.asm) {
+            console.log('Found asm in fs.fs')
+          }
+          
+          // Try to find WASM instance
+          if (fsObj.HEAP8 || fsObj.HEAP16 || fsObj.HEAP32) {
+            console.log('Found HEAP in fs.fs - this is Emscripten WASM')
+            // Try to find the actual WASM instance
+            for (const key of allKeys) {
+              if (key.toLowerCase().includes('wasm') || key.toLowerCase().includes('instance')) {
+                try {
+                  const val = fsObj[key]
+                  if (val && typeof val === 'object') {
+                    console.log(`Found ${key} in fs.fs:`, val)
+                    if (typeof val.terminate === 'function') {
+                      val.terminate()
+                      console.log(`✓ Terminated ${key}`)
+                    }
+                  }
+                } catch (e) {
+                  // Ignore
+                }
+              }
+            }
+          }
+          
+          // Try to find any terminate/destroy/stop functions (but skip filesystem-specific ones)
+          const skipFunctions = ['destroyNode', 'destroyFile', 'destroyDir', 'destroyLink'] // These are filesystem operations, not termination
+          for (const key of allKeys) {
+            if (skipFunctions.includes(key)) {
+              continue // Skip filesystem destroy functions
+            }
+            if ((key.includes('terminate') || key.includes('destroy') || key.includes('stop')) && typeof fsObj[key] === 'function') {
+              try {
+                // Only call if it's a termination function, not a filesystem operation
+                if (key === 'terminate' || key === 'stop' || key.includes('Module')) {
+                  fsObj[key]()
+                  console.log(`✓ Called fs.fs.${key}()`)
+                }
+              } catch (e) {
+                console.warn(`Error calling fs.fs.${key}():`, e)
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Error accessing fs.fs:', e)
+        }
+      }
+      
+      // Try to find Module in global scope (Emscripten sometimes puts it there)
+      if (window.Module) {
+        try {
+          console.log('Found window.Module, keys:', Object.keys(window.Module).slice(0, 20))
+          if (typeof window.Module.terminate === 'function') {
+            window.Module.terminate()
+            console.log('✓ Terminated window.Module')
+          }
+        } catch (e) {
+          console.warn('Error with window.Module:', e)
+        }
+      }
+    } catch (err) {
+      console.warn('Error stopping DOSBox:', err)
+    }
+  }
+  
+  // Wait for WASM instance to terminate BEFORE removing canvas
+  // This is critical - removing canvas too early can prevent proper termination
+  const terminateWasm = async () => {
+    console.log('=== Starting WASM termination process ===')
+    let terminated = false
+    
+    // 1. Try through fs.fs.Module
+    if (dosRuntime.value && dosRuntime.value.fs && dosRuntime.value.fs.fs) {
+      try {
+        const fsObj = dosRuntime.value.fs.fs
+        console.log('Checking fs.fs for Module...')
+        console.log('fs.fs keys that might contain Module:', Object.keys(fsObj).filter(k => k.toLowerCase().includes('module') || k.toLowerCase().includes('wasm')))
+        
+        // Check if Module exists as a property
+        if (fsObj.Module) {
+          console.log('✓ Found fs.fs.Module!', Object.keys(fsObj.Module))
+          if (typeof fsObj.Module.terminate === 'function') {
+            console.log('Terminating fs.fs.Module...')
+            fsObj.Module.terminate()
+            console.log('✓ Called fs.fs.Module.terminate()')
+            terminated = true
+            await new Promise(resolve => setTimeout(resolve, 500))
+          } else {
+            console.log('fs.fs.Module.terminate is not a function, available methods:', Object.keys(fsObj.Module).filter(k => typeof fsObj.Module[k] === 'function'))
+          }
+        } else {
+          console.log('✗ fs.fs.Module not found')
+        }
+        
+        // Also check if Module is accessible through other paths
+        for (const key of Object.keys(fsObj)) {
+          try {
+            const val = fsObj[key]
+            if (val && typeof val === 'object' && val.Module && typeof val.Module.terminate === 'function') {
+              console.log(`✓ Found Module in fs.fs.${key}, terminating...`)
+              val.Module.terminate()
+              console.log(`✓ Called fs.fs.${key}.Module.terminate()`)
+              terminated = true
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      } catch (e) {
+        console.warn('Error accessing fs.fs.Module:', e)
+      }
+    } else {
+      console.log('✗ dosRuntime.value.fs.fs not available')
+    }
+    
+    // 2. Try through canvas element
+    if (gameContainer.value) {
+      const canvas = gameContainer.value.querySelector('#jsdos-canvas')
+      if (canvas) {
+        console.log('Checking canvas for WASM instance...')
+        try {
+          const canvasKeys = Object.keys(canvas)
+          console.log('Canvas keys that might contain WASM:', canvasKeys.filter(k => 
+            k.toLowerCase().includes('module') || 
+            k.toLowerCase().includes('wasm') || 
+            k.toLowerCase().includes('audio') ||
+            k.toLowerCase().includes('dos')
+          ))
+          
+          // Check all properties of canvas for WASM instance
+          for (const key in canvas) {
+            try {
+              const val = canvas[key]
+              if (val && typeof val === 'object') {
+                if (val.Module && typeof val.Module.terminate === 'function') {
+                  console.log(`✓ Found Module in canvas.${key}, terminating...`)
+                  val.Module.terminate()
+                  console.log(`✓ Called canvas.${key}.Module.terminate()`)
+                  terminated = true
+                  await new Promise(resolve => setTimeout(resolve, 500))
+                }
+                // Also check for WASM instance directly
+                if (val.asm || val.wasmMemory || (val.HEAP8 && val.HEAP16)) {
+                  console.log(`✓ Found WASM-like object in canvas.${key}`)
+                  if (typeof val.terminate === 'function') {
+                    val.terminate()
+                    console.log(`✓ Called canvas.${key}.terminate()`)
+                    terminated = true
+                    await new Promise(resolve => setTimeout(resolve, 500))
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore
+            }
+          }
+        } catch (e) {
+          console.warn('Error checking canvas for WASM:', e)
+        }
+      } else {
+        console.log('✗ Canvas not found')
+      }
+    }
+    
+    // 3. Try window.Module
+    if (window.Module) {
+      console.log('Found window.Module!', Object.keys(window.Module))
+      if (typeof window.Module.terminate === 'function') {
+        try {
+          console.log('Terminating window.Module...')
+          window.Module.terminate()
+          console.log('✓ Called window.Module.terminate()')
+          terminated = true
+          await new Promise(resolve => setTimeout(resolve, 500))
+        } catch (e) {
+          console.warn('Error terminating window.Module:', e)
+        }
+      } else {
+        console.log('window.Module.terminate is not a function')
+      }
+    } else {
+      console.log('✗ window.Module not found')
+    }
+    
+    // 4. Try to find WASM instance through Dos promise
+    if (dosPromise.value) {
+      console.log('Checking dosPromise for WASM instance...')
+      try {
+        const promiseKeys = Object.keys(dosPromise.value)
+        console.log('dosPromise keys:', promiseKeys)
+        
+        // Check all properties of dosPromise for WASM instance
+        for (const key in dosPromise.value) {
+          try {
+            const val = dosPromise.value[key]
+            if (val && typeof val === 'object') {
+              if (val.Module && typeof val.Module.terminate === 'function') {
+                console.log(`✓ Found Module in dosPromise.${key}, terminating...`)
+                val.Module.terminate()
+                console.log(`✓ Called dosPromise.${key}.Module.terminate()`)
+                terminated = true
+                await new Promise(resolve => setTimeout(resolve, 500))
+              }
+              if (typeof val.terminate === 'function' && (val.asm || val.wasmMemory)) {
+                console.log(`✓ Found WASM instance in dosPromise.${key}, terminating...`)
+                val.terminate()
+                console.log(`✓ Called dosPromise.${key}.terminate()`)
+                terminated = true
+                await new Promise(resolve => setTimeout(resolve, 500))
+              }
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      } catch (e) {
+        console.warn('Error checking dosPromise for WASM:', e)
+      }
+    } else {
+      console.log('✗ dosPromise.value not available')
+    }
+    
+    console.log(`=== WASM termination complete. Terminated: ${terminated} ===`)
+    return terminated
+  }
+  
+  // Also try to find and stop ALL audio sources more aggressively
+  const stopAllAudio = () => {
+    console.log('=== Stopping all audio sources ===')
+    
+    // Find all audio elements
+    const audioElements = document.querySelectorAll('audio, video')
+    console.log(`Found ${audioElements.length} audio/video elements`)
+    audioElements.forEach((el, idx) => {
+      try {
+        el.pause()
+        el.currentTime = 0
+        el.volume = 0
+        el.muted = true
+        el.src = ''
+        el.load()
+        console.log(`✓ Stopped audio element ${idx}`)
+      } catch (e) {
+        console.warn(`Error stopping audio element ${idx}:`, e)
+      }
+    })
+    
+    // Find all AudioContext instances
+    const contexts = []
+    // Check window
+    for (const key in window) {
+      try {
+        const obj = window[key]
+        if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+          contexts.push({ source: 'window', key, ctx: obj })
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    // Check document
+    for (const key in document) {
+      try {
+        const obj = document[key]
+        if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+          contexts.push({ source: 'document', key, ctx: obj })
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    console.log(`Found ${contexts.length} AudioContext instances:`, contexts.map(c => `${c.source}.${c.key}`))
+    
+    contexts.forEach(({ source, key, ctx }) => {
+      try {
+        if (ctx.state !== 'closed') {
+          // Try to stop all source nodes
+          if (ctx.destination) {
+            try {
+              const sources = ctx.destination.inputs || []
+              sources.forEach((source, idx) => {
+                try {
+                  if (source && typeof source.stop === 'function') {
+                    source.stop()
+                    console.log(`✓ Stopped source node ${idx} in ${source}.${key}`)
+                  }
+                  if (source && typeof source.disconnect === 'function') {
+                    source.disconnect()
+                    console.log(`✓ Disconnected source node ${idx} in ${source}.${key}`)
+                  }
+                } catch (e) {
+                  // Ignore
+                }
+              })
+            } catch (e) {
+              // Ignore
+            }
+          }
+          
+          ctx.suspend()
+          ctx.close()
+          console.log(`✓ Closed AudioContext ${source}.${key}`)
+        }
+      } catch (e) {
+        console.warn(`Error closing AudioContext ${source}.${key}:`, e)
+      }
+    })
+    
+    console.log('=== Audio stopping complete ===')
+  }
+  
+  // Stop all audio first
+  stopAllAudio()
+  
+  // Terminate WASM first, then remove canvas
+  const wasmTerminated = await terminateWasm()
+  
+  if (!wasmTerminated) {
+    console.warn('⚠️ WASM instance was not found/terminated. Audio may continue.')
+  }
+  
+  // Now remove the canvas after WASM has had time to terminate
+  if (gameContainer.value) {
+    // Get reference to old canvas before removing
+    const oldCanvas = gameContainer.value.querySelector('#jsdos-canvas')
+    
+    // If old canvas existed, try to stop audio and remove references
+    if (oldCanvas) {
+      try {
+        // Try to find and disconnect any audio nodes attached to canvas
+        for (const key in oldCanvas) {
+          try {
+            const val = oldCanvas[key]
+            if (val && typeof val === 'object') {
+              if (val.constructor && val.constructor.name && 
+                  (val.constructor.name.includes('Audio') || 
+                   val.constructor.name.includes('Node'))) {
+                if (typeof val.stop === 'function') {
+                  val.stop()
+                  console.log('✓ Stopped audio node from canvas')
+                }
+                if (typeof val.disconnect === 'function') {
+                  val.disconnect()
+                  console.log('✓ Disconnected audio node from canvas')
+                }
+              }
+              // Also check for WASM instance
+              if (val && typeof val === 'object' && (val.Module || val.asm || val.wasmMemory)) {
+                console.log('Found potential WASM instance in canvas:', key)
+                try {
+                  if (val.Module && typeof val.Module.terminate === 'function') {
+                    val.Module.terminate()
+                    console.log('✓ Terminated WASM Module from canvas')
+                  }
+                } catch (e) {
+                  // Ignore
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      } catch (e) {
+        console.warn('Error processing canvas:', e)
+      }
+    }
+    
+    // Wait a bit more before removing canvas
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    // Now remove all child elements completely
+    gameContainer.value.innerHTML = ''
+    
+    // Force a reflow to ensure DOM is updated
+    void gameContainer.value.offsetHeight
+    
+    // Wait longer for any pending operations to complete
+    setTimeout(() => {
+      if (!gameContainer.value) return
+      
+      // Create a completely fresh black canvas
+      const canvas = document.createElement('canvas')
+      canvas.id = 'jsdos-canvas'
+      canvas.width = 640
+      canvas.height = 480
+      canvas.style.width = '100%'
+      canvas.style.height = 'auto'
+      canvas.style.display = 'block'
+      canvas.style.maxWidth = '100%'
+      canvas.style.backgroundColor = '#000'
+      
+      // Clear the canvas
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = '#000'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
+      
+      gameContainer.value.appendChild(canvas)
+      console.log('✓ Created fresh black canvas')
+    }, 500) // Additional wait after canvas removal
+  }
+  
+  // Try to terminate any Web Workers that JS-DOS might be using
+  try {
+    // Web Workers are not directly accessible, but we can try to find them
+    // through the Dos promise or runtime
+    if (dosPromise.value && dosPromise.value._worker) {
+      try {
+        dosPromise.value._worker.terminate()
+        console.log('✓ Terminated Web Worker from Dos promise')
+      } catch (e) {
+        console.warn('Error terminating Web Worker:', e)
+      }
+    }
+    if (dosRuntime.value && dosRuntime.value._worker) {
+      try {
+        dosRuntime.value._worker.terminate()
+        console.log('✓ Terminated Web Worker from dosRuntime')
+      } catch (e) {
+        console.warn('Error terminating Web Worker:', e)
+      }
+    }
+  } catch (err) {
+    console.warn('Error with Web Worker termination:', err)
+  }
+  
+  // Reset game state
+  gameReady.value = false
+  dosRuntime.value = null
+  dosPromise.value = null
+  dosCi.value = null
+  
+  // Try to find and terminate any WASM instances
+  try {
+    // Look for WASM instances in global scope
+    if (window.Module) {
+      try {
+        console.log('Found window.Module, methods:', Object.keys(window.Module).slice(0, 20))
+        if (window.Module.terminate && typeof window.Module.terminate === 'function') {
+          window.Module.terminate()
+          console.log('Terminated window.Module')
+        }
+        if (window.Module.destroy && typeof window.Module.destroy === 'function') {
+          window.Module.destroy()
+          console.log('Destroyed window.Module')
+        }
+      } catch (e) {
+        console.warn('Error with window.Module:', e)
+      }
+    }
+    
+    // Look for WASM instances attached to canvas
+    if (gameContainer.value) {
+      const canvas = gameContainer.value.querySelector('canvas')
+      if (canvas) {
+        // Check if canvas has WASM module attached
+        if (canvas.Module) {
+          try {
+            if (canvas.Module.terminate) {
+              canvas.Module.terminate()
+              console.log('Terminated canvas.Module')
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
+    }
+    
+    // Try to find all AudioContext instances and close them - more aggressive
+    if (window.AudioContext || window.webkitAudioContext) {
+      // Get all audio contexts from the page
+      const contexts = []
+      
+      // Check window properties
+      for (const key in window) {
+        try {
+          const obj = window[key]
+          if (obj instanceof AudioContext || obj instanceof webkitAudioContext) {
+            contexts.push(obj)
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Check document properties
+      for (const key in document) {
+        try {
+          const obj = document[key]
+          if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+            contexts.push(obj)
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Check all elements for audio contexts
+      document.querySelectorAll('*').forEach(el => {
+        for (const key in el) {
+          try {
+            const obj = el[key]
+            if (obj instanceof AudioContext || (typeof webkitAudioContext !== 'undefined' && obj instanceof webkitAudioContext)) {
+              contexts.push(obj)
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      })
+      
+      // Close all found contexts
+      contexts.forEach(ctx => {
+        try {
+          // Get all source nodes and stop them
+          if (ctx.destination) {
+            try {
+              // Try to disconnect all sources
+              const sources = ctx.destination.inputs || []
+              sources.forEach(source => {
+                try {
+                  if (source && typeof source.stop === 'function') {
+                    source.stop()
+                  }
+                  if (source && typeof source.disconnect === 'function') {
+                    source.disconnect()
+                  }
+                } catch (e) {
+                  // Ignore
+                }
+              })
+            } catch (e) {
+              // Ignore
+            }
+          }
+          
+          // Suspend and close
+          if (ctx.state !== 'closed') {
+            ctx.suspend()
+            ctx.close()
+            console.log('✓ Closed audio context')
+          }
+        } catch (e) {
+          console.warn('Error closing audio context:', e)
+        }
+      })
+      
+      // Also try to create a new context and immediately close it to reset state
+      try {
+        const AudioContextClass = window.AudioContext || (typeof window.webkitAudioContext !== 'undefined' ? window.webkitAudioContext : null)
+        if (AudioContextClass) {
+          const tempCtx = new AudioContextClass()
+          tempCtx.close()
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    // Force stop all audio by muting the page
+    try {
+      // Try to mute all audio elements
+      document.querySelectorAll('audio, video').forEach(media => {
+        try {
+          media.pause()
+          media.currentTime = 0
+          media.volume = 0
+          media.muted = true
+          media.src = ''
+          media.load()
+        } catch (e) {
+          // Ignore
+        }
+      })
+    } catch (e) {
+      console.warn('Error muting media:', e)
+    }
+  } catch (err) {
+    console.warn('Error terminating WASM:', err)
+  }
+  
+  console.log('Game stopped, returned to black screen')
+}
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 Bytes'
   const k = 1024
@@ -1086,8 +2565,103 @@ function formatBytes(bytes) {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
+// Developer mode functions
+const localFileInput = ref(null)
+
+async function handleLocalFileUpload(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    error.value = 'Please select a ZIP file'
+    return
+  }
+  
+  loading.value = true
+  error.value = null
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    localFileData.value = new Uint8Array(arrayBuffer)
+    localFileName.value = file.name
+    console.log('Loaded local file:', file.name, 'Size:', localFileData.value.length)
+  } catch (err) {
+    error.value = `Failed to load file: ${err.message}`
+    console.error('Error loading local file:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function runLocalGame() {
+  if (!localFileData.value) {
+    error.value = 'No local file loaded'
+    return
+  }
+  
+  // Stop any currently running game
+  if (gameReady.value) {
+    stopGame()
+    // Wait a bit for cleanup
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  
+  // Reset state
+  error.value = null
+  loading.value = true
+  
+  try {
+    // Create a temporary manifest-like object for local files
+    const tempManifest = {
+      filename: localFileName.value,
+      game_id: 0,
+      total_size: localFileData.value.length,
+      chunk_size: 51,
+      network: 'local',
+      sender_address: 'LOCAL',
+      sha256: '' // Will be computed if needed
+    }
+    
+    // Set fileData and verified to allow running
+    fileData.value = localFileData.value
+    verified.value = true
+    manifest.value = tempManifest
+    syncProgress.value = { 
+      fetched: 0, 
+      total: 0, 
+      bytes: localFileData.value.length,
+      rate: 0
+    }
+    
+    // Now run the game using the existing runGame function
+    await runGame()
+  } catch (err) {
+    error.value = `Failed to run local game: ${err.message}`
+    console.error('Error running local game:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Keyboard shortcut for developer mode (Ctrl+Shift+D)
+function handleKeyDown(event) {
+  if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+    event.preventDefault()
+    developerMode.value = !developerMode.value
+    console.log('Developer mode:', developerMode.value ? 'enabled' : 'disabled')
+  }
+}
+
 onMounted(() => {
+  // Add keyboard listener for developer mode
+  window.addEventListener('keydown', handleKeyDown)
+  
   // Auto-load manifests list on mount
   loadManifestsList()
+})
+
+onUnmounted(() => {
+  // Cleanup keyboard listener
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>

@@ -12,8 +12,7 @@ FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
-# Copy manifests directory to serve as static files
-COPY manifests /usr/share/nginx/html/manifests
+# Manifests are already copied to dist/ by Vite from public/manifests/
 
 EXPOSE 80
 
