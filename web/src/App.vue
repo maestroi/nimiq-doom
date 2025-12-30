@@ -10,18 +10,47 @@
 
     <!-- Main Content -->
     <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Manifest Selection -->
-      <div v-if="manifests.length > 0" class="mb-6 bg-gray-800 rounded-lg border border-gray-700 p-4">
-        <label class="block text-sm font-medium text-gray-300 mb-2">Select Manifest</label>
-        <select
-          v-model="selectedManifestName"
-          @change="loadManifest"
-          class="block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
-        >
-          <option v-for="m in manifests" :key="m.name" :value="m.name">
-            {{ m.name }} (Game ID: {{ m.game_id }}, {{ formatBytes(m.total_size) }}, {{ m.tx_count.toLocaleString() }} tx)
-          </option>
-        </select>
+      <!-- RPC Endpoint and Manifest Selection (side by side) -->
+      <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- RPC Endpoint Selection -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+          <label class="block text-sm font-medium text-gray-300 mb-2">Nimiq RPC Endpoint</label>
+          <div class="flex gap-2">
+            <select
+              v-model="selectedRpcEndpoint"
+              @change="onRpcEndpointChange"
+              class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+            >
+              <option v-for="endpoint in rpcEndpoints" :key="endpoint.url" :value="endpoint.url">
+                {{ endpoint.name }}
+              </option>
+              <option value="custom">Custom...</option>
+            </select>
+            <input
+              v-if="selectedRpcEndpoint === 'custom'"
+              v-model="customRpcEndpoint"
+              @blur="onCustomRpcEndpointChange"
+              placeholder="https://rpc-mainnet.nimiqscan.com"
+              class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+            />
+          </div>
+          <p class="mt-1 text-xs text-gray-400">Select a public Nimiq RPC endpoint</p>
+        </div>
+
+        <!-- Manifest Selection -->
+        <div v-if="manifests.length > 0" class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+          <label class="block text-sm font-medium text-gray-300 mb-2">Select Manifest</label>
+          <select
+            v-model="selectedManifestName"
+            @change="loadManifest"
+            class="block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+          >
+            <option v-for="m in manifests" :key="m.name" :value="m.name">
+              {{ m.name }} (Game ID: {{ m.game_id }}, {{ formatBytes(m.total_size) }}, {{ m.tx_count.toLocaleString() }} tx)
+            </option>
+          </select>
+          <p class="mt-1 text-xs text-gray-400">{{ manifests.length }} manifest(s) available</p>
+        </div>
       </div>
 
       <!-- Action Buttons -->
@@ -201,6 +230,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { NimiqRPC } from './nimiq-rpc.js'
 
 const manifest = ref(null)
 const manifests = ref([])
@@ -214,24 +244,70 @@ const gameReady = ref(false)
 const gameContainer = ref(null)
 const dosRuntime = ref(null)
 
+// RPC endpoint configuration
+const rpcEndpoints = ref([
+  { name: 'NimiqScan Mainnet', url: 'https://rpc-mainnet.nimiqscan.com' },
+  { name: 'NimiqScan Testnet', url: 'https://rpc-testnet.nimiqscan.com' },
+  { name: 'Custom...', url: 'custom' }
+])
+
+const selectedRpcEndpoint = ref('https://rpc-mainnet.nimiqscan.com')
+const customRpcEndpoint = ref('')
+let rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
+
 const syncProgressPercent = computed(() => {
   if (syncProgress.value.total === 0) return 0
   return (syncProgress.value.fetched / syncProgress.value.total) * 100
 })
 
-// Use backend URL directly - defaults to http://localhost:8080/api
-// Can be overridden with VITE_API_BASE environment variable at build time
-// For Docker: set VITE_API_BASE=http://backend:8080/api in .env or docker-compose
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080/api'
+// Manifest files are served as static files from /manifests/
+const MANIFESTS_BASE = '/manifests/'
+
+function onRpcEndpointChange() {
+  if (selectedRpcEndpoint.value !== 'custom') {
+    rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
+  }
+}
+
+function onCustomRpcEndpointChange() {
+  if (customRpcEndpoint.value) {
+    selectedRpcEndpoint.value = customRpcEndpoint.value
+    rpcClient = new NimiqRPC(customRpcEndpoint.value)
+  }
+}
 
 async function loadManifestsList() {
   loading.value = true
   error.value = null
   try {
-    const response = await fetch(`${API_BASE}/manifests`)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const data = await response.json()
-    manifests.value = data.manifests || []
+    // Try to fetch a list of manifest files
+    // For now, we'll try to load common manifest names or scan a directory
+    // Since we can't list files from static hosting, we'll try known names
+    const knownManifests = ['digger', 'testfile', 'testbin']
+    const loadedManifests = []
+    
+    for (const name of knownManifests) {
+      try {
+        const response = await fetch(`${MANIFESTS_BASE}${name}.json`)
+        if (response.ok) {
+          const manifestData = await response.json()
+          loadedManifests.push({
+            name: name,
+            game_id: manifestData.game_id,
+            filename: manifestData.filename,
+            total_size: manifestData.total_size,
+            chunk_size: manifestData.chunk_size || 51,
+            network: manifestData.network,
+            sender_address: manifestData.sender_address,
+            tx_count: manifestData.expected_tx_hashes?.length || 0
+          })
+        }
+      } catch (err) {
+        // Skip if manifest doesn't exist
+      }
+    }
+    
+    manifests.value = loadedManifests
     
     // Auto-select first manifest if none selected
     if (manifests.value.length > 0 && !selectedManifestName.value) {
@@ -254,15 +330,10 @@ async function loadManifest() {
   loading.value = true
   error.value = null
   try {
-    const response = await fetch(`${API_BASE}/manifest?name=${encodeURIComponent(selectedManifestName.value)}`)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const response = await fetch(`${MANIFESTS_BASE}${selectedManifestName.value}.json`)
+    if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to load manifest`)
     manifest.value = await response.json()
-    // Ensure selectedManifestName is set (in case it wasn't set before)
-    if (!selectedManifestName.value && manifest.value) {
-      // Try to derive from filename or use a default
-      const nameFromFilename = manifest.value.filename ? manifest.value.filename.replace(/\.(zip|bin|img|exe|com|bat)$/i, '') : 'default'
-      selectedManifestName.value = nameFromFilename
-    }
+    
     // Reset state when loading new manifest
     fileData.value = null
     verified.value = false
@@ -275,9 +346,53 @@ async function loadManifest() {
   }
 }
 
+// Parse chunk from transaction data
+function parseChunkFromTxData(txData) {
+  if (!txData || txData.length < 2) return null
+  
+  // Decode hex string to bytes
+  const hexString = txData.startsWith('0x') ? txData.slice(2) : txData
+  if (hexString.length % 2 !== 0) return null
+  
+  const data = new Uint8Array(hexString.length / 2)
+  for (let i = 0; i < hexString.length; i += 2) {
+    data[i / 2] = parseInt(hexString.substr(i, 2), 16)
+  }
+  
+  // Check minimum length
+  if (data.length < 13) return null
+  
+  // Check magic bytes "DOOM"
+  const magic = String.fromCharCode(data[0], data[1], data[2], data[3])
+  if (magic !== 'DOOM') return null
+  
+  // Parse chunk header (little-endian)
+  const gameID = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24)
+  const chunkIdx = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24)
+  const length = data[12]
+  
+  // Validate length
+  if (length > 51 || data.length < 13 + length) return null
+  
+  // Extract chunk data
+  const chunkData = data.slice(13, 13 + length)
+  
+  return {
+    gameID,
+    chunkIdx,
+    length,
+    data: chunkData
+  }
+}
+
 async function syncChunks() {
   if (!manifest.value) {
     error.value = 'No manifest loaded. Please select and load a manifest first.'
+    return
+  }
+
+  if (!manifest.value.expected_tx_hashes || manifest.value.expected_tx_hashes.length === 0) {
+    error.value = 'Manifest has no expected transaction hashes. Cannot sync chunks.'
     return
   }
 
@@ -288,87 +403,78 @@ async function syncChunks() {
   verified.value = false
 
   try {
-    // Ensure we have a manifest name - use selectedManifestName or try to derive from manifest list
-    let manifestName = selectedManifestName.value
-    if (!manifestName && manifests.value.length > 0) {
-      // Try to find matching manifest by game_id
-      const matchingManifest = manifests.value.find(m => m.game_id === manifest.value.game_id)
-      if (matchingManifest) {
-        manifestName = matchingManifest.name
-        selectedManifestName.value = manifestName
-      }
-    }
-    
-    if (!manifestName) {
-      error.value = 'No manifest name available. Please select a manifest from the dropdown first.'
-      return
-    }
-    
-    // First check status to see if chunks are available
-    const manifestParam = `&manifest=${encodeURIComponent(manifestName)}`
-    const statusResponse = await fetch(`${API_BASE}/status?${manifestParam}`)
-    if (!statusResponse.ok) throw new Error(`Failed to get status: HTTP ${statusResponse.status}`)
-    const status = await statusResponse.json()
-    
-    if (status.chunksStored === 0) {
-      error.value = `No chunks indexed yet. Backend has indexed ${status.chunksStored} chunks. The indexer is fetching transactions. If you just uploaded, wait for the transactions to be confirmed and indexed.`
-      if (status.missingTxHashes && status.missingTxHashes.length > 0) {
-        error.value += ` Missing ${status.missingTxHashes.length} expected transactions.`
-      }
-      return
-    }
-
     const totalChunks = Math.ceil(manifest.value.total_size / manifest.value.chunk_size)
     const chunks = new Map()
-    let from = 0
-    const limit = 1000
-
-    while (chunks.size < totalChunks) {
-      const response = await fetch(
-        `${API_BASE}/chunks?game_id=${manifest.value.game_id}&from=${from}&limit=${limit}${manifestParam}`
-      )
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-      const data = await response.json()
-      if (data.items.length === 0) break
-
-      for (const item of data.items) {
-        chunks.set(item.idx, item)
+    const expectedHashes = manifest.value.expected_tx_hashes
+    
+    syncProgress.value.total = expectedHashes.length
+    
+    // Fetch each transaction by hash
+    for (let i = 0; i < expectedHashes.length; i++) {
+      const txHash = expectedHashes[i]
+      
+      try {
+        const tx = await rpcClient.getTransactionByHash(txHash)
+        
+        // Get transaction data (recipientData or data field)
+        const txData = tx.recipientData || tx.data || ''
+        
+        if (!txData) {
+          console.warn(`Transaction ${txHash} has no data field`)
+          continue
+        }
+        
+        // Parse chunk from transaction data
+        const chunk = parseChunkFromTxData(txData)
+        
+        if (!chunk) {
+          console.warn(`Failed to parse chunk from transaction ${txHash}`)
+          continue
+        }
+        
+        // Verify game ID matches
+        if (chunk.gameID !== manifest.value.game_id) {
+          console.warn(`Chunk game ID ${chunk.gameID} doesn't match manifest game ID ${manifest.value.game_id}`)
+          continue
+        }
+        
+        // Store chunk
+        chunks.set(chunk.chunkIdx, chunk)
+        
+        // Update progress
+        syncProgress.value.fetched = chunks.size
+        
+        // Calculate bytes
+        let bytes = 0
+        for (const c of chunks.values()) {
+          bytes += c.length
+        }
+        syncProgress.value.bytes = bytes
+        
+      } catch (err) {
+        console.warn(`Failed to fetch transaction ${txHash}:`, err)
+        // Continue with other transactions
       }
-
-      syncProgress.value.fetched = chunks.size
-      syncProgress.value.total = totalChunks
-
-      // Calculate bytes
-      let bytes = 0
-      for (const chunk of chunks.values()) {
-        bytes += chunk.len
-      }
-      syncProgress.value.bytes = bytes
-
-      if (data.items.length < limit) break
-      from = data.items[data.items.length - 1].idx + 1
     }
 
     if (chunks.size === 0) {
-      error.value = 'No chunks found in database. The backend indexer may still be fetching transactions.'
+      error.value = 'No chunks found. Transactions may not be confirmed yet or RPC endpoint may be unavailable.'
       return
     }
 
     if (chunks.size < totalChunks) {
-      error.value = `Only found ${chunks.size} of ${totalChunks} expected chunks. Some chunks may not be indexed yet.`
+      error.value = `Only found ${chunks.size} of ${totalChunks} expected chunks. Some transactions may not be confirmed yet.`
     }
 
     // Reconstruct file
     const sortedChunks = Array.from(chunks.values())
-      .sort((a, b) => a.idx - b.idx)
+      .sort((a, b) => a.chunkIdx - b.chunkIdx)
 
     const reconstructed = new Uint8Array(manifest.value.total_size)
     let offset = 0
     for (const chunk of sortedChunks) {
-      const chunkData = Uint8Array.from(atob(chunk.data_base64), c => c.charCodeAt(0))
-      reconstructed.set(chunkData.slice(0, chunk.len), offset)
-      offset += chunk.len
+      reconstructed.set(chunk.data.slice(0, chunk.length), offset)
+      offset += chunk.length
     }
 
     fileData.value = reconstructed
@@ -381,7 +487,8 @@ async function syncChunks() {
       await verifyFile()
     }
   } catch (err) {
-    error.value = err.message
+    error.value = err.message || 'Failed to sync chunks from blockchain'
+    console.error('Sync error:', err)
   } finally {
     loading.value = false
   }

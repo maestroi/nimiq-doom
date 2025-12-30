@@ -7,14 +7,9 @@ export default defineConfig({
     vue(),
     tailwindcss(),
   ],
+  base: process.env.GITHUB_PAGES ? '/nimiq-doom/' : '/',
   server: {
     host: '0.0.0.0',
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://backend:8080',
-        changeOrigin: true,
-      },
-    },
   },
 })

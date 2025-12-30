@@ -1,34 +1,8 @@
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    environment:
-      - NIMIQ_RPC_URL=http://192.168.50.99:8648
-      - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS:-2}
-    volumes:
-      - ./manifests:/app/manifests:ro
-      - backend-data:/app/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_BASE=http://localhost:8080/api
+      context: .
+      dockerfile: ./web/Dockerfile
     ports:
       - "5174:80"
-    depends_on:
-      - backend
     restart: unless-stopped
-
-volumes:
-  backend-data:
