@@ -2,97 +2,99 @@
   <div class="min-h-screen bg-gray-900 text-gray-100">
     <!-- Header -->
     <div class="bg-gray-800 border-b border-gray-700">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <h1 class="text-3xl font-bold text-white">🎮 Nimiq DOS Games Onchain</h1>
-        <p class="mt-2 text-gray-400">Download DOS games from the blockchain and play them in your browser!</p>
+      <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl md:text-3xl font-bold text-white">🎮 Nimiq DOS Games Onchain</h1>
+            <p class="mt-1 text-sm text-gray-400">Download DOS games from the blockchain and play them in your browser!</p>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <!-- RPC Endpoint Selection -->
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-medium text-gray-400 whitespace-nowrap">RPC:</label>
+              <select
+                v-model="selectedRpcEndpoint"
+                @change="onRpcEndpointChange"
+                class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[200px]"
+              >
+                <option v-for="endpoint in rpcEndpoints" :key="endpoint.url" :value="endpoint.url">
+                  {{ endpoint.name }}
+                </option>
+              </select>
+              <input
+                v-if="selectedRpcEndpoint === 'custom'"
+                v-model="customRpcEndpoint"
+                @blur="onCustomRpcEndpointChange"
+                placeholder="https://rpc-mainnet.nimiqscan.com"
+                class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[200px]"
+              />
+            </div>
+            <!-- Program Selection -->
+            <div v-if="manifests.length > 0" class="flex items-center gap-2">
+              <label class="text-xs font-medium text-gray-400 whitespace-nowrap">Program:</label>
+              <select
+                v-model="selectedManifestName"
+                @change="loadManifest"
+                class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[200px]"
+              >
+                <option value="">-- Select --</option>
+                <option v-for="m in manifests" :key="m.name" :value="m.name">
+                  {{ m.name }}
+                </option>
+              </select>
+              <button
+                @click="loadManifestsList"
+                :disabled="loading"
+                class="inline-flex items-center px-2 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh Programs"
+              >
+                <svg v-if="loading" class="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <svg v-else class="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Main Content -->
     <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- RPC Endpoint and Manifest Selection (side by side) -->
-      <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- RPC Endpoint Selection -->
-        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
-          <label class="block text-sm font-medium text-gray-300 mb-2">Nimiq RPC Endpoint</label>
-          <div class="flex gap-2">
-          <select
-            v-model="selectedRpcEndpoint"
-            @change="onRpcEndpointChange"
-            class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
-          >
-            <option v-for="endpoint in rpcEndpoints" :key="endpoint.url" :value="endpoint.url">
-              {{ endpoint.name }}
-            </option>
-          </select>
-            <input
-              v-if="selectedRpcEndpoint === 'custom'"
-              v-model="customRpcEndpoint"
-              @blur="onCustomRpcEndpointChange"
-              placeholder="https://rpc-mainnet.nimiqscan.com"
-              class="flex-1 rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
-            />
+      <!-- How It Works Info -->
+      <div class="mb-6 rounded-md bg-blue-900/30 border border-blue-700 p-4">
+        <details class="cursor-pointer">
+          <summary class="text-sm font-medium text-blue-200 hover:text-blue-100 flex items-center">
+            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            How It Works
+          </summary>
+          <div class="mt-4 text-sm text-blue-100 space-y-3">
+            <div>
+              <h4 class="font-semibold text-blue-200 mb-1">1. Storage on Blockchain</h4>
+              <p class="text-blue-100/90">Programs are split into 64-byte chunks and stored as transaction data on the Nimiq blockchain. Each chunk contains a magic header, game ID, chunk index, and up to 51 bytes of program data.</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-blue-200 mb-1">2. Download Program</h4>
+              <p class="text-blue-100/90">When you click "Download Program", the app fetches all transaction chunks from the blockchain using the transaction hashes in the manifest. The chunks are reassembled in order to reconstruct the original file.</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-blue-200 mb-1">3. Verification</h4>
+              <p class="text-blue-100/90">After downloading, the reconstructed file is automatically verified using SHA256. The computed hash is compared with the hash stored in the manifest to ensure data integrity and authenticity.</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-blue-200 mb-1">4. Run in Browser</h4>
+              <p class="text-blue-100/90">Once verified, you can run the DOS program directly in your browser using JS-DOS (a JavaScript port of DOSBox). The program runs entirely client-side - no server required!</p>
+            </div>
+            <div class="pt-2 border-t border-blue-700/50">
+              <p class="text-xs text-blue-200/80"><strong>Note:</strong> All data is stored permanently on the blockchain. Anyone can reconstruct and run these programs by downloading the manifest and syncing chunks from any Nimiq RPC endpoint.</p>
+            </div>
           </div>
-          <p class="mt-1 text-xs text-gray-400">Select a public Nimiq RPC endpoint</p>
-        </div>
-
-        <!-- Manifest Selection -->
-        <div v-if="manifests.length > 0" class="bg-gray-800 rounded-lg border border-gray-700 p-4">
-          <label class="block text-sm font-medium text-gray-300 mb-2">Select Manifest</label>
-          <select
-            v-model="selectedManifestName"
-            @change="loadManifest"
-            class="block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
-          >
-            <option v-for="m in manifests" :key="m.name" :value="m.name">
-              {{ m.name }} (Game ID: {{ m.game_id }}, {{ formatBytes(m.total_size) }}, {{ m.tx_count.toLocaleString() }} tx)
-            </option>
-          </select>
-          <p class="mt-1 text-xs text-gray-400">{{ manifests.length }} manifest(s) available</p>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="mb-8 flex flex-wrap gap-3">
-        <button
-          @click="loadManifestsList"
-          :disabled="loading"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Refresh Manifests
-        </button>
-        <button
-          @click="syncChunks"
-          :disabled="!manifest || loading"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Sync Chunks
-        </button>
-        <button
-          @click="downloadFile"
-          :disabled="!verified || loading"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg class="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Download File
-        </button>
-        <button
-          @click="runGame"
-          :disabled="!verified || loading"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg class="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Run Game in Browser
-        </button>
+        </details>
       </div>
 
       <!-- Error Message -->
@@ -113,9 +115,12 @@
       <!-- Main Content Grid: Manifest + DOS side by side -->
       <div class="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-6 mb-6">
         <!-- Manifest Card -->
-        <div v-if="manifest" class="bg-gray-800 rounded-lg shadow-lg border border-gray-700 p-6">
-          <h2 class="text-xl font-semibold text-white mb-4">Manifest</h2>
-          <dl class="space-y-2">
+        <div v-if="manifest" class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow-sm dark:divide-white/10 dark:bg-gray-800/50 dark:shadow-none dark:outline dark:-outline-offset-1 dark:outline-white/10">
+          <div class="px-4 py-5 sm:px-6">
+            <h2 class="text-xl font-semibold text-white">Program Info</h2>
+          </div>
+          <div class="px-4 py-5 sm:p-6">
+            <dl class="space-y-2">
             <div>
               <dt class="text-xs font-medium text-gray-400">Game ID</dt>
               <dd class="mt-0.5 text-sm text-white font-mono">{{ manifest.game_id }}</dd>
@@ -158,10 +163,10 @@
                 </div>
               </details>
             </div>
-          </dl>
+            </dl>
 
-          <!-- Sync Progress (smaller, under manifest) -->
-          <div v-if="syncProgress.total > 0" class="mt-4 pt-4 border-t border-gray-700">
+            <!-- Sync Progress (smaller, under manifest) -->
+            <div v-if="syncProgress.total > 0" class="mt-4 pt-4 border-t border-gray-700 dark:border-white/10">
             <h3 class="text-sm font-semibold text-white mb-2">Sync Progress</h3>
             <div class="space-y-2">
               <div>
@@ -199,33 +204,77 @@
                 <span v-if="estimatedTimeRemaining !== null" class="text-xs text-white font-medium">{{ formatTimeRemaining(estimatedTimeRemaining) }}</span>
               </div>
             </div>
-          </div>
+            </div>
 
-          <!-- File Verification (smaller, under sync progress) -->
-          <div v-if="verified && !error" class="mt-3 pt-3 border-t border-gray-700">
-            <div class="flex items-center">
-              <svg class="h-4 w-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
-              <div>
-                <div class="text-xs font-medium text-green-200">File Verified</div>
-                <div class="text-xs text-green-300">SHA256 matches manifest</div>
+            <!-- File Verification (smaller, under sync progress) -->
+            <div v-if="verified && !error" class="mt-3 pt-3 border-t border-gray-700 dark:border-white/10">
+              <div class="flex items-center">
+                <svg class="h-4 w-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <div>
+                  <div class="text-xs font-medium text-green-200">File Verified</div>
+                  <div class="text-xs text-green-300">SHA256 matches manifest</div>
+                </div>
               </div>
             </div>
+          </div>
+          <div class="px-4 py-4 sm:px-6">
+            <!-- Download Program Button -->
+            <button
+              @click="syncChunks"
+              :disabled="!manifest || loading"
+              class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Download Program
+            </button>
           </div>
         </div>
 
         <!-- DOS Container -->
-        <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
-          <h2 class="text-xl font-semibold text-white mb-4">DOS Emulator</h2>
-          <div ref="gameContainer" class="bg-black rounded w-full" style="min-height: 400px; display: block; aspect-ratio: 4/3;"></div>
-          <div v-if="!gameReady && verified" class="text-center py-8 text-gray-400">
-            <p class="mb-4">Ready to Run</p>
-            <p class="text-sm mb-4">Click "Run Game in Browser" to start the DOS emulator</p>
-            <p class="text-xs text-gray-500">The game will run directly in your browser</p>
+        <div class="divide-y divide-gray-200 overflow-hidden rounded-lg bg-white shadow-sm dark:divide-white/10 dark:bg-gray-800/50 dark:shadow-none dark:outline dark:-outline-offset-1 dark:outline-white/10">
+          <div class="px-4 py-5 sm:px-6">
+            <h2 class="text-xl font-semibold text-white">DOS Emulator</h2>
           </div>
-          <div v-else-if="!gameReady && !verified" class="text-center py-8 text-gray-500">
-            <p>Load and verify a manifest file to enable DOS emulator</p>
+          <div class="px-4 py-5 sm:p-6">
+            <div ref="gameContainer" class="bg-black rounded w-full mb-4" style="min-height: 400px; display: block; aspect-ratio: 4/3;"></div>
+            
+            <div v-if="!gameReady && verified" class="text-center py-4 text-gray-400">
+              <p class="text-sm">Ready to run. Click "Run Program" to start the DOS emulator.</p>
+            </div>
+            <div v-else-if="!gameReady && !verified" class="text-center py-4 text-gray-500">
+              <p class="text-sm">Sync and verify a program to enable the DOS emulator</p>
+            </div>
+          </div>
+          <div class="px-4 py-4 sm:px-6">
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-3">
+              <button
+                @click="runGame"
+                :disabled="!verified || loading"
+                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Run Program
+              </button>
+              <button
+                @click="downloadFile"
+                :disabled="!verified || loading"
+                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download File
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -368,7 +417,7 @@ async function loadManifestsList() {
 
 async function loadManifest() {
   if (!selectedManifestName.value) {
-    error.value = "No manifest selected"
+    error.value = "No program selected"
     return
   }
   
@@ -432,7 +481,7 @@ function parseChunkFromTxData(txData) {
 
 async function syncChunks() {
   if (!manifest.value) {
-    error.value = 'No manifest loaded. Please select and load a manifest first.'
+    error.value = 'No program loaded. Please select and load a program first.'
     return
   }
 
