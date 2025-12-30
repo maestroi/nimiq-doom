@@ -1,0 +1,11 @@
+*.db
+*.db-shm
+*.db-wal
+chunks.db*
+upload_progress_*.json
+upload_plan.jsonl
+.env
+node_modules/
+dist/
+*.log
+account_credentials.txt

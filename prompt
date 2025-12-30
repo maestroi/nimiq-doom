@@ -1,0 +1,126 @@
+You are building an MVP repo called `nimiq-doom-onchain`.
+
+Goal
+- Meme project: store a binary (e.g. doom1.wad shareware or any test file) on Nimiq by splitting into 64-byte tx payload chunks.
+- Anyone can reconstruct the file from the chain and play it in the browser (JS-DOS).
+- Stack: Vue 3 frontend, Go backend API + Go uploader, all runnable via docker compose.
+
+Hard constraints
+- Nimiq tx “data” field is limited to 64 bytes. Use the following chunk payload layout (exact bytes):
+  - 0..3   MAGIC = ASCII "DOOM" (0x44 0x4F 0x4F 0x4D)
+  - 4..7   GAME_ID uint32 little-endian
+  - 8..11  CHUNK_INDEX uint32 little-endian
+  - 12     LEN uint8 (0..51)
+  - 13..63 DATA (51 bytes; only first LEN bytes are valid)
+- LEN < 51 implies last chunk when reconstructing, but also allow reconstruction using manifest total_size.
+- Use a manifest JSON stored in the repo (and returned by backend):
+  - game_id (uint32)
+  - filename (string)
+  - total_size (uint64)
+  - chunk_size = 51
+  - sha256 (hex)
+  - sender_address (string)
+  - network (mainnet/testnet)
+  - optional: start_height/end_height filters
+
+Repo structure
+- /backend (Go): HTTP API that serves manifest and chunk data pulled from a Nimiq RPC endpoint
+- /uploader (Go): CLI to chunk a file and submit txs to Nimiq RPC
+- /web (Vue 3 + Vite): UI to download chunks from backend, reconstruct file, verify sha256, and run DOOM via JS-DOS
+- /docker-compose.yml: runs backend + web + (optionally) uploader container
+
+Assumptions
+- Backend and uploader talk to Nimiq via HTTP JSON-RPC endpoint configured by env:
+  - NIMIQ_RPC_URL
+  - NIMIQ_NETWORK
+- Wallet/signing: implement uploader to use a private key / wallet via RPC if available. If signing via RPC is hard, design uploader with an interface `TxSender` so it can later be replaced. For MVP, support:
+  1) “raw tx send” if RPC provides a method (document placeholder)
+  2) “dry-run” mode that only outputs chunk payloads and a plan file for manual broadcasting
+- Backend does not need to be a full indexer; it can:
+  - query transactions by sender_address over a block height range (preferred)
+  - OR accept a simple local sqlite cache populated by polling blocks
+  Implement a minimal “block poller” indexer inside backend:
+  - poll latest height
+  - for each new block, fetch block details, parse txs, extract DOOM chunks, store in sqlite
+  - provide endpoints to stream chunks in order
+
+Backend requirements (Go)
+- Use chi or gin, whichever is simplest.
+- SQLite for chunk storage (using modernc.org/sqlite or mattn/go-sqlite3).
+- Tables:
+  - chunks(game_id INTEGER, idx INTEGER, len INTEGER, data BLOB, tx_hash TEXT, height INTEGER, PRIMARY KEY(game_id, idx))
+  - meta(key TEXT PRIMARY KEY, value TEXT) for last indexed height etc.
+- Config via env:
+  - NIMIQ_RPC_URL
+  - INDEX_START_HEIGHT (optional)
+  - POLL_INTERVAL_SECONDS (default 2)
+- HTTP endpoints:
+  - GET /api/manifest -> returns manifest.json (load from file or env)
+  - GET /api/status -> {latestIndexedHeight, chunksStored, missingRanges?}
+  - GET /api/chunks -> returns chunks in a compact format; support query params:
+      game_id, from, limit
+    Response:
+      {game_id, chunk_size, items:[{idx,len,data_base64}]}
+  - GET /api/chunks/raw -> returns application/octet-stream of reconstructed file bytes (server-side reconstruction), optional but nice.
+- Verification helpers:
+  - endpoint GET /api/verify -> server reconstructs and returns sha256 + matches boolean.
+
+Nimiq RPC interaction (backend)
+- Implement a small JSON-RPC client.
+- Add placeholder methods for block fetching; create interfaces so we can map to actual Nimiq RPC methods later.
+- If exact Nimiq RPC methods aren’t known, implement with generic calls:
+  - getHeadHeight()
+  - getBlockByHeight(height, includeTransactions=true)
+  Provide TODO notes where method names may differ.
+
+Uploader requirements (Go)
+- CLI commands:
+  - upload --file <path> --game-id <u32> --sender <address> [--dry-run] [--rate <tx/s>]
+  - manifest --file <path> --game-id <u32> --sender <address> -> writes manifest.json with sha256/total_size
+- Chunking:
+  - chunk_size = 51
+  - produce payload bytes length 64 each
+  - ensure last chunk LEN = remaining bytes
+- Broadcasting:
+  - rate limit sending (token bucket)
+  - retry failed sends
+  - write a local progress file (JSON) so it can resume
+- For MVP if real sending is blocked by RPC signing, implement “dry-run + export”:
+  - write chunks to `upload_plan.jsonl` each line: {idx, payload_hex}
+  so user can broadcast by other tooling later.
+
+Web frontend requirements (Vue 3)
+- Single page with:
+  - “Load manifest”
+  - “Sync chunks” (calls /api/chunks paginated)
+  - progress bar (chunks fetched, bytes fetched)
+  - reconstruct to Uint8Array
+  - verify sha256 in browser (WebCrypto)
+  - “Run DOOM” button once verified
+- Integrate JS-DOS:
+  - include js-dos runtime under /public/jsdos (placeholder)
+  - create a component that boots js-dos and mounts doom1.wad into the virtual FS
+  - If actual DOOM exe bundle isn’t included, show placeholder “Provide DOOM executable bundle” with instructions
+- Make the UI clean and minimal.
+
+Docker
+- docker-compose services:
+  - backend: builds /backend, exposes 8080, mounts ./manifest.json and sqlite volume
+  - web: builds /web, serves on 5173 or nginx 80
+  - uploader: builds /uploader (optional), entrypoint sleeps; user runs `docker compose run uploader ...`
+- Provide .env.example with required env vars.
+
+Documentation
+- README with:
+  - quickstart: docker compose up
+  - how to generate manifest
+  - how to upload (dry-run and real mode)
+  - how reconstruction works
+  - payload format
+
+Implementation notes
+- Prefer correctness + clear TODOs over guessing exact Nimiq RPC names.
+- Keep code production-quality (logging, error handling).
+- Do not include copyrighted DOOM assets in repo; use a placeholder sample binary for tests (e.g. tiny.bin) and show how to swap.
+
+Now generate the full repository files with code for backend, uploader, web, docker compose, and README.

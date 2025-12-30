@@ -1,0 +1,216 @@
+package main
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
+)
+
+type UploadPlan struct {
+	Index   uint32 `json:"idx"`
+	Payload string `json:"payload_hex"`
+	TxHash  string `json:"tx_hash,omitempty"` // Transaction hash where this chunk was sent
+}
+
+type UploadProgress struct {
+	GameID       uint32       `json:"game_id"`
+	TotalChunks  int          `json:"total_chunks"`
+	SentChunks   int          `json:"sent_chunks"`
+	FailedChunks []int        `json:"failed_chunks,omitempty"`
+	Plan         []UploadPlan `json:"plan"`
+}
+
+func newUploadCmd() *cobra.Command {
+	var (
+		filePath  string
+		gameID    uint32
+		sender    string
+		receiver  string
+		dryRun    bool
+		rateLimit float64
+		rpcURL    string
+		fee       int64
+	)
+
+	cmd := &cobra.Command{
+		Use:   "upload",
+		Short: "Upload a file as DOOM chunks to Nimiq",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Override with env if set
+			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
+				rpcURL = url
+			}
+			if rpcURL == "" {
+				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+			}
+
+			// Try to get sender from credentials file if not provided
+			if sender == "" {
+				sender = GetDefaultAddress()
+			}
+
+			if sender == "" {
+				return fmt.Errorf("sender address is required (--sender or set in account_credentials.txt)")
+			}
+
+			// Default receiver address if not provided
+			if receiver == "" {
+				receiver = "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES"
+			}
+
+			chunks, err := ChunkFile(filePath, gameID)
+			if err != nil {
+				return fmt.Errorf("failed to chunk file: %w", err)
+			}
+
+			fmt.Printf("Created %d chunks for game_id=%d\n", len(chunks), gameID)
+
+			progress := &UploadProgress{
+				GameID:      gameID,
+				TotalChunks: len(chunks),
+				SentChunks:  0,
+				Plan:        make([]UploadPlan, 0, len(chunks)),
+			}
+
+			// Load existing progress if available
+			progressFile := fmt.Sprintf("upload_progress_%d.json", gameID)
+			if data, err := os.ReadFile(progressFile); err == nil {
+				json.Unmarshal(data, progress)
+			}
+
+			var txSender TxSender
+			if dryRun {
+				txSender = &DryRunSender{}
+			} else {
+				// Check consensus before proceeding
+				rpc := NewNimiqRPC(rpcURL)
+				consensus, err := rpc.IsConsensusEstablished()
+				if err != nil {
+					return fmt.Errorf("failed to check consensus: %w", err)
+				}
+				if !consensus {
+					return fmt.Errorf("node does not have consensus with the network - cannot upload. Wait for sync or use --dry-run")
+				}
+
+				// Create RPC sender (will check account status)
+				fmt.Printf("Sending transactions from %s to %s\n", sender, receiver)
+				rpcSender, err := NewRPCSender(rpcURL, sender, receiver, fee)
+				if err != nil {
+					return fmt.Errorf("failed to initialize RPC sender: %w", err)
+				}
+				txSender = rpcSender
+			}
+
+			limiter := rate.NewLimiter(rate.Limit(rateLimit), 1)
+
+			for i, chunk := range chunks {
+				// Check if already sent
+				var existingPlan *UploadPlan
+				for j := range progress.Plan {
+					if progress.Plan[j].Index == chunk.Index {
+						existingPlan = &progress.Plan[j]
+						break
+					}
+				}
+				if existingPlan != nil {
+					if existingPlan.TxHash != "" {
+						fmt.Printf("Skipping chunk %d (already sent in tx: %s)\n", chunk.Index, existingPlan.TxHash)
+					} else {
+						fmt.Printf("Skipping chunk %d (already sent)\n", chunk.Index)
+					}
+					continue
+				}
+
+				// Rate limit
+				if err := limiter.Wait(cmd.Context()); err != nil {
+					return err
+				}
+
+				payload, err := EncodePayload(chunk)
+				if err != nil {
+					return fmt.Errorf("failed to encode chunk %d: %w", i, err)
+				}
+
+				txHash, err := txSender.SendTransaction(payload)
+				if err != nil {
+					fmt.Printf("Failed to send chunk %d: %v\n", chunk.Index, err)
+					progress.FailedChunks = append(progress.FailedChunks, int(chunk.Index))
+					continue
+				}
+
+				progress.Plan = append(progress.Plan, UploadPlan{
+					Index:   chunk.Index,
+					Payload: hex.EncodeToString(payload),
+					TxHash:  txHash,
+				})
+				progress.SentChunks++
+
+				fmt.Printf("Sent chunk %d/%d (tx: %s)\n", i+1, len(chunks), txHash)
+
+				// Save progress periodically
+				if (i+1)%10 == 0 {
+					saveProgress(progressFile, progress)
+				}
+			}
+
+			// Final save
+			saveProgress(progressFile, progress)
+
+			if dryRun {
+				// Write upload plan
+				planFile := "upload_plan.jsonl"
+				file, err := os.Create(planFile)
+				if err != nil {
+					return fmt.Errorf("failed to create plan file: %w", err)
+				}
+				defer file.Close()
+
+				encoder := json.NewEncoder(file)
+				for _, plan := range progress.Plan {
+					if err := encoder.Encode(plan); err != nil {
+						return fmt.Errorf("failed to write plan: %w", err)
+					}
+				}
+
+				fmt.Printf("\nDry-run complete. Upload plan written to %s\n", planFile)
+				fmt.Printf("Total chunks: %d\n", len(progress.Plan))
+			} else {
+				fmt.Printf("\nUpload complete. Sent %d/%d chunks\n", progress.SentChunks, progress.TotalChunks)
+				if len(progress.FailedChunks) > 0 {
+					fmt.Printf("Failed chunks: %v\n", progress.FailedChunks)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&filePath, "file", "", "Path to file to upload (required)")
+	cmd.Flags().Uint32Var(&gameID, "game-id", 0, "Game ID (uint32) (required)")
+	cmd.Flags().StringVar(&sender, "sender", "", "Sender address (defaults to ADDRESS from account_credentials.txt)")
+	cmd.Flags().StringVar(&receiver, "receiver", "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES", "Receiver address for data transactions")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry-run mode (output plan file only)")
+	cmd.Flags().Float64Var(&rateLimit, "rate", 1.0, "Transaction rate limit (tx/s)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().Int64Var(&fee, "fee", 0, "Transaction fee in Luna (default: 0, minimum)")
+
+	cmd.MarkFlagRequired("file")
+	cmd.MarkFlagRequired("game-id")
+
+	return cmd
+}
+
+func saveProgress(filename string, progress *UploadProgress) {
+	data, err := json.MarshalIndent(progress, "", "  ")
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal progress: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		fmt.Printf("Warning: failed to save progress: %v\n", err)
+	}
+}
