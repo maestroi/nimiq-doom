@@ -10,7 +10,6 @@
       :loading="loading"
       @update:rpc-endpoint="onRpcEndpointChange"
       @update:custom-rpc="onCustomRpcEndpointChange"
-      @toggle-dev-mode="developerMode = !developerMode"
       @update:manifest="onManifestChange"
       @refresh-manifests="loadManifestsList"
     />
@@ -342,16 +341,18 @@ const localFileData = ref(null)
 const localFileName = ref(null)
 
 // RPC endpoint handlers
-function onRpcEndpointChange() {
-  if (selectedRpcEndpoint.value !== 'custom') {
-    rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
+function onRpcEndpointChange(newEndpoint) {
+  selectedRpcEndpoint.value = newEndpoint
+  if (newEndpoint !== 'custom') {
+    rpcClient = new NimiqRPC(newEndpoint)
   }
 }
 
-function onCustomRpcEndpointChange() {
-  if (customRpcEndpoint.value) {
-    selectedRpcEndpoint.value = customRpcEndpoint.value
-    rpcClient = new NimiqRPC(customRpcEndpoint.value)
+function onCustomRpcEndpointChange(newUrl) {
+  customRpcEndpoint.value = newUrl
+  if (newUrl) {
+    selectedRpcEndpoint.value = newUrl
+    rpcClient = new NimiqRPC(newUrl)
   }
 }
 

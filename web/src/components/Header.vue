@@ -8,7 +8,7 @@
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
           <!-- RPC Endpoint Selection -->
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <label class="text-xs font-medium text-gray-400 whitespace-nowrap">RPC:</label>
             <select
               :value="selectedRpcEndpoint"
@@ -22,21 +22,13 @@
             <input
               v-if="selectedRpcEndpoint === 'custom'"
               :value="customRpcEndpoint"
-              @blur="$emit('update:custom-rpc', ($event.target).value)"
-              placeholder="https://rpc-mainnet.nimiqscan.com"
-              class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[200px]"
+              @input="$emit('update:custom-rpc', $event.target.value)"
+              @keyup.enter="$emit('update:custom-rpc', $event.target.value)"
+              placeholder="Enter RPC URL (e.g., https://rpc-mainnet.nimiqscan.com)"
+              type="url"
+              class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[300px] flex-1"
             />
           </div>
-          <!-- Developer Mode Toggle -->
-          <button
-            @click="$emit('toggle-dev-mode')"
-            class="text-xs px-2 py-1 rounded border border-gray-600 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-300"
-            title="Developer Mode (Ctrl+Shift+D)"
-          >
-            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-          </button>
           <!-- Program Selection -->
           <div v-if="manifests.length > 0" class="flex items-center gap-2">
             <label class="text-xs font-medium text-gray-400 whitespace-nowrap">Program:</label>
@@ -84,7 +76,6 @@ defineProps({
 defineEmits([
   'update:rpc-endpoint',
   'update:custom-rpc',
-  'toggle-dev-mode',
   'update:manifest',
   'refresh-manifests'
 ])
