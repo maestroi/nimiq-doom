@@ -14,6 +14,8 @@ func main() {
 	}
 
 	rootCmd.AddCommand(newUploadCmd())
+	rootCmd.AddCommand(newUploadCartridgeCmd())
+	rootCmd.AddCommand(newRetireAppCmd())
 	rootCmd.AddCommand(newManifestCmd())
 	rootCmd.AddCommand(newAccountCmd())
 	rootCmd.AddCommand(newPackageCmd())

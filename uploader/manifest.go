@@ -10,31 +10,31 @@ import (
 )
 
 type Manifest struct {
-	GameID       uint32 `json:"game_id"`
-	Title        string `json:"title,omitempty"` // Display name of the game (e.g., "Digger Remastered")
-	Platform     string `json:"platform,omitempty"` // Platform (e.g., "DOS", "Windows", "Linux")
-	Filename     string `json:"filename"`
-	Executable   string `json:"executable,omitempty"` // Optional: specifies which .exe/.com/.bat to run
-	TotalSize    uint64 `json:"total_size"`
-	ChunkSize    int    `json:"chunk_size"`
-	SHA256       string `json:"sha256"`
-	SenderAddress string `json:"sender_address"`
-	Network      string `json:"network"`
-	StartHeight  *int64 `json:"start_height,omitempty"`
-	EndHeight    *int64 `json:"end_height,omitempty"`
+	GameID           uint32   `json:"game_id"`
+	Title            string   `json:"title,omitempty"`    // Display name of the game (e.g., "Digger Remastered")
+	Platform         string   `json:"platform,omitempty"` // Platform (e.g., "DOS", "Windows", "Linux")
+	Filename         string   `json:"filename"`
+	Executable       string   `json:"executable,omitempty"` // Optional: specifies which .exe/.com/.bat to run
+	TotalSize        uint64   `json:"total_size"`
+	ChunkSize        int      `json:"chunk_size"`
+	SHA256           string   `json:"sha256"`
+	SenderAddress    string   `json:"sender_address"`
+	Network          string   `json:"network"`
+	StartHeight      *int64   `json:"start_height,omitempty"`
+	EndHeight        *int64   `json:"end_height,omitempty"`
 	ExpectedTxHashes []string `json:"expected_tx_hashes,omitempty"` // Transaction hashes that should contain chunks
 }
 
 func newManifestCmd() *cobra.Command {
 	var (
-		filePath      string
-		gameID        uint32
-		sender        string
-		network       string
-		output        string
-		progressFile  string // Path to upload_progress_*.json file
-		title         string // Display title of the game
-		platform      string // Platform (e.g., "DOS", "Windows")
+		filePath     string
+		gameID       uint32
+		sender       string
+		network      string
+		output       string
+		progressFile string // Path to upload_progress_*.json file
+		title        string // Display title of the game
+		platform     string // Platform (e.g., "DOS", "Windows")
 	)
 
 	cmd := &cobra.Command{
@@ -65,16 +65,16 @@ func newManifestCmd() *cobra.Command {
 			}
 
 			manifest := Manifest{
-				GameID:       gameID,
-				Title:        title,
-				Platform:     platform,
-				Filename:     filename,
-				Executable:   "", // Can be set manually after manifest generation
-				TotalSize:    uint64(len(data)),
-				ChunkSize:    51,
-				SHA256:       sha256Hex,
+				GameID:        gameID,
+				Title:         title,
+				Platform:      platform,
+				Filename:      filename,
+				Executable:    "", // Can be set manually after manifest generation
+				TotalSize:     uint64(len(data)),
+				ChunkSize:     51,
+				SHA256:        sha256Hex,
 				SenderAddress: sender,
-				Network:      network,
+				Network:       network,
 			}
 
 			// Try to load transaction hashes from upload progress file

@@ -5,13 +5,20 @@
       :selected-rpc-endpoint="selectedRpcEndpoint"
       :custom-rpc-endpoint="customRpcEndpoint"
       :rpc-endpoints="rpcEndpoints"
-      :manifests="manifests"
-      :selected-manifest-name="selectedManifestName"
-      :loading="loading"
+      :games="catalogGames"
+      :selected-game="selectedGame"
+      :selected-version="selectedVersion"
+      :loading="catalogLoading || loading"
+      :catalogs="catalogs"
+      :selected-catalog-name="selectedCatalogName"
+      :catalog-address="catalogAddress"
+      :publisher-address="publisherAddress"
       @update:rpc-endpoint="onRpcEndpointChange"
       @update:custom-rpc="onCustomRpcEndpointChange"
-      @update:manifest="onManifestChange"
-      @refresh-manifests="loadManifestsList"
+      @update:catalog="onCatalogChange"
+      @update:game="onGameChange"
+      @update:version="onVersionChange"
+      @refresh-catalog="loadCatalog"
     />
 
     <!-- Main Content -->
@@ -142,19 +149,23 @@
               <p class="text-blue-100/90">Programs are split into 64-byte chunks and stored as transaction data on the Nimiq blockchain. Each chunk contains a magic header, game ID, chunk index, and up to 51 bytes of program data.</p>
             </div>
             <div>
-              <h4 class="font-semibold text-blue-200 mb-1">2. Download Program</h4>
-              <p class="text-blue-100/90">When you click "Download Program", the app fetches all transaction chunks from the blockchain using the transaction hashes in the manifest. The chunks are reassembled in order to reconstruct the original file.</p>
+              <h4 class="font-semibold text-blue-200 mb-1">2. Discover Games</h4>
+              <p class="text-blue-100/90">The frontend queries the catalog address to discover available games. Each game has multiple versions stored at dedicated cartridge addresses.</p>
             </div>
             <div>
-              <h4 class="font-semibold text-blue-200 mb-1">3. Verification</h4>
-              <p class="text-blue-100/90">After downloading, the reconstructed file is automatically verified using SHA256. The computed hash is compared with the hash stored in the manifest to ensure data integrity and authenticity.</p>
+              <h4 class="font-semibold text-blue-200 mb-1">3. Download Cartridge</h4>
+              <p class="text-blue-100/90">When you select a game version, the app fetches the CART header and all DATA chunks from the cartridge address. The chunks are reassembled in order to reconstruct the original ZIP file.</p>
             </div>
             <div>
-              <h4 class="font-semibold text-blue-200 mb-1">4. Run in Browser</h4>
-              <p class="text-blue-100/90">Once verified, you can run the DOS program directly in your browser using JS-DOS (a JavaScript port of DOSBox). The program runs entirely client-side - no server required!</p>
+              <h4 class="font-semibold text-blue-200 mb-1">4. Verification</h4>
+              <p class="text-blue-100/90">After downloading, the reconstructed file is automatically verified using SHA256. The computed hash is compared with the hash stored in the CART header to ensure data integrity and authenticity.</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-blue-200 mb-1">5. Run in Browser</h4>
+              <p class="text-blue-100/90">Once verified, you can run the program directly in your browser. DOS games use JS-DOS (a JavaScript port of DOSBox). The program runs entirely client-side - no server required!</p>
             </div>
             <div class="pt-2 border-t border-blue-700/50">
-              <p class="text-xs text-blue-200/80"><strong>Note:</strong> All data is stored permanently on the blockchain. Anyone can reconstruct and run these programs by downloading the manifest and syncing chunks from any Nimiq RPC endpoint.</p>
+              <p class="text-xs text-blue-200/80"><strong>Note:</strong> All data is stored permanently on the blockchain. Games are discovered from the catalog address and downloaded from cartridge addresses. Only transactions from the trusted publisher address are accepted.</p>
             </div>
           </div>
         </details>
@@ -175,33 +186,41 @@
         </div>
       </div>
 
-      <!-- Main Content Grid: Manifest + Emulator side by side -->
-      <div class="grid grid-cols-1 lg:grid-cols-[0.8fr_1.7fr] gap-6 mb-6">
-        <!-- Program Info Card -->
-        <ProgramInfo
-          :manifest="manifest"
-          :sync-progress="syncProgress"
-          :verified="verified"
-          :file-data="fileData"
-          :loading="loading"
-          :error="error"
-          :estimated-time-remaining="estimatedTimeRemaining"
-          :loaded-from-cache="loadedFromCache"
-          @sync-chunks="syncChunks"
-          @clear-cache="clearCacheAndResync"
-        />
+      <!-- Main Content: Game Selector + Emulator side by side, Sync below -->
+      <div class="space-y-6 mb-6">
+        <!-- Top Row: Game Selector + Emulator -->
+        <div class="grid grid-cols-1 lg:grid-cols-[0.6fr_1.4fr] gap-6">
+          <!-- Game Selector Card (with download/sync) -->
+          <GameSelector
+            :games="catalogGames"
+            :selected-game="selectedGame"
+            :selected-version="selectedVersion"
+            :cart-header="cartHeader"
+            :run-json="runJson"
+            :sync-progress="cartridgeProgress"
+            :verified="verified"
+            :file-data="fileData"
+            :loading="loading"
+            :error="error"
+            :progress-percent="cartridgeProgressPercent"
+            @update:game="onGameChange"
+            @update:version="onVersionChange"
+            @load-cartridge="loadCartridge"
+            @clear-cache="clearCartridgeCache"
+          />
 
-        <!-- Emulator Container -->
-        <EmulatorContainer
-          :platform="manifest?.platform || 'DOS'"
-          :verified="verified"
-          :loading="loading"
-          :game-ready="gameReady"
-          @run-game="runGame"
-          @stop-game="stopGame"
-          @download-file="downloadFile"
-          ref="emulatorContainerRef"
-        />
+          <!-- Emulator Container -->
+          <EmulatorContainer
+            :platform="cartHeader?.platform || runJson?.platform || 'DOS'"
+            :verified="verified"
+            :loading="loading"
+            :game-ready="gameReady"
+            @run-game="runGame"
+            @stop-game="stopGame"
+            @download-file="downloadFile"
+            ref="emulatorContainerRef"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -212,12 +231,12 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { formatBytes } from './utils.js'
 import { NimiqRPC } from './nimiq-rpc.js'
 import Header from './components/Header.vue'
-import ProgramInfo from './components/ProgramInfo.vue'
 import EmulatorContainer from './components/EmulatorContainer.vue'
-import { useManifests } from './composables/useManifests.js'
-import { useCache } from './composables/useCache.js'
-import { useSync } from './composables/useSync.js'
+import GameSelector from './components/GameSelector.vue'
+import { useCatalog } from './composables/useCatalog.js'
+import { useCartridge } from './composables/useCartridge.js'
 import { useDosEmulator } from './composables/useDosEmulator.js'
+import { useGbEmulator } from './composables/useGbEmulator.js'
 
 // RPC Configuration
 const rpcEndpoints = ref([
@@ -227,94 +246,163 @@ const rpcEndpoints = ref([
 
 const selectedRpcEndpoint = ref('https://rpc-mainnet.nimiqscan.com')
 const customRpcEndpoint = ref('')
-let rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
+const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
+
+// Configuration - Multiple catalogs
+const catalogs = ref([
+  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0' },
+  { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' }
+])
+const selectedCatalogName = ref('Test')
+const catalogAddress = computed(() => {
+  const catalog = catalogs.value.find(c => c.name === selectedCatalogName.value)
+  return catalog ? catalog.address : catalogs.value[0].address
+})
+const publisherAddress = ref('NQ89 4GDH 0J4U C2FY TU0Y TP1X J1H7 3HX3 PVSE') // Trusted publisher address
 
 // Developer Mode
 const developerMode = ref(false)
-const devSyncSpeed = ref(null)
-const devSyncDelay = ref(null)
 
-// Composables
-const { manifests, selectedManifestName, manifest, loading: manifestsLoading, error: manifestsError, loadManifestsList, loadManifest } = useManifests()
-const { loadFromCache, saveToCache, clearCache } = useCache()
+// Catalog and Cartridge
+const selectedGame = ref(null)
+const selectedVersion = ref(null)
 
-// Handle manifest selection change
-async function onManifestChange(manifestName) {
-  selectedManifestName.value = manifestName
-  await loadManifest()
-}
+// Catalog composable
+const catalog = useCatalog(rpcClient, catalogAddress, publisherAddress)
+const { 
+  loading: catalogLoading, 
+  error: catalogError, 
+  games: catalogGames, 
+  loadCatalog 
+} = catalog
 
-// Sync composable
-const sync = useSync(
-  manifest,
-  rpcClient,
-  devSyncSpeed,
-  devSyncDelay,
-  selectedRpcEndpoint,
-  customRpcEndpoint,
-  loadFromCache,
-  saveToCache
-)
-
+// Cartridge composable
+const cartridgeAddress = computed(() => {
+  return selectedVersion.value?.cartridgeAddress || null
+})
+const cartridge = useCartridge(rpcClient, cartridgeAddress, publisherAddress)
 const {
-  loading: syncLoading,
-  error: syncError,
-  verified,
+  loading: cartridgeLoading,
+  error: cartridgeError,
   fileData,
-  syncProgress,
-  estimatedTimeRemaining,
-  loadedFromCache,
-  syncProgressPercent,
-  syncChunks,
-  verifyFile,
-  downloadFile
-} = sync
+  verified,
+  cartHeader,
+  progress: cartridgeProgress,
+  progressPercent: cartridgeProgressPercent,
+  loadCartridgeInfo,
+  loadCartridge,
+  extractRunJson,
+  clearCache: clearCartridgeCache
+} = cartridge
 
-// Watch for manifest changes to auto-load from cache
-watch(manifest, async (newManifest) => {
-  if (!newManifest) {
-    fileData.value = null
-    verified.value = false
-    loadedFromCache.value = false
-    syncProgress.value = { fetched: 0, total: 0, bytes: 0, rate: 0 }
-    gameReady.value = false
-    return
+const runJson = ref(null)
+
+// Watch for cartridge loading completion to extract run.json
+watch([fileData, verified], async ([newFileData, newVerified]) => {
+  if (newFileData && newVerified) {
+    runJson.value = await extractRunJson()
+  } else {
+    runJson.value = null
   }
-  
-  // Reset state
+})
+
+// Combined loading and error states
+const loading = computed(() => catalogLoading.value || cartridgeLoading.value)
+const error = computed(() => catalogError.value || cartridgeError.value)
+
+// Handle game selection
+function onGameChange(game) {
+  selectedGame.value = game
+  if (game && game.versions.length > 0) {
+    selectedVersion.value = game.versions[0] // Select latest version
+  } else {
+    selectedVersion.value = null
+  }
+  // Reset cartridge state
   fileData.value = null
   verified.value = false
-  loadedFromCache.value = false
-  syncProgress.value = { fetched: 0, total: 0, bytes: 0, rate: 0 }
-  gameReady.value = false
-  
-  // Try to load from cache immediately when manifest changes
-  const cachedData = await loadFromCache(newManifest)
-  if (cachedData) {
-    console.log('Auto-loading from cache for', newManifest.filename)
-    fileData.value = cachedData
-    loadedFromCache.value = true
-    syncProgress.value = { 
-      fetched: newManifest.expected_tx_hashes?.length || 0, 
-      total: newManifest.expected_tx_hashes?.length || 0, 
-      bytes: cachedData.length,
-      rate: 0
-    }
-    // Verify cached data
-    await verifyFile()
+  runJson.value = null
+}
+
+// Handle catalog selection
+function onCatalogChange(catalogName) {
+  selectedCatalogName.value = catalogName
+  // Reset game selection and reload catalog
+  selectedGame.value = null
+  selectedVersion.value = null
+  fileData.value = null
+  verified.value = false
+  runJson.value = null
+  // Reload catalog with new address
+  loadCatalog()
+}
+
+// Handle version selection
+function onVersionChange(version) {
+  selectedVersion.value = version
+  // Reset cartridge state
+  fileData.value = null
+  verified.value = false
+  runJson.value = null
+}
+
+// Watch for catalog address changes to reload catalog
+watch(catalogAddress, async (newAddress) => {
+  if (newAddress) {
+    // Reset selection and reload catalog
+    selectedGame.value = null
+    selectedVersion.value = null
+    fileData.value = null
+    verified.value = false
+    runJson.value = null
+    await loadCatalog()
   }
 }, { immediate: false })
 
-// Combined loading and error states
-const loading = computed(() => manifestsLoading.value || syncLoading.value)
-const error = computed(() => manifestsError.value || syncError.value)
+// Watch for version changes to load cartridge info only (no download)
+watch(selectedVersion, async (newVersion) => {
+  if (!newVersion || !newVersion.cartridgeAddress) {
+    fileData.value = null
+    verified.value = false
+    runJson.value = null
+    cartHeader.value = null
+    return
+  }
+  
+  // Only load CART header info for display, don't download yet
+  await loadCartridgeInfo()
+}, { immediate: false })
 
 // Emulator
 const gameReady = ref(false)
 const emulatorContainerRef = ref(null)
 
-// DOS Emulator composable
-const dosEmulator = useDosEmulator(manifest, fileData, verified, loading, error, gameReady)
+// Create a manifest-like object for DOS emulator compatibility
+const manifestForEmulator = computed(() => {
+  if (!cartHeader.value && !runJson.value && !fileData.value) return null
+  
+  const platformCode = cartHeader.value?.platform
+  const platformName = platformCode === 0 ? 'DOS' : 
+                       platformCode === 1 ? 'GB' :
+                       platformCode === 2 ? 'GBC' : 'DOS'
+  
+  return {
+    filename: runJson.value?.filename || 'game.zip',
+    game_id: cartHeader.value?.cartridgeId || 0,
+    total_size: cartHeader.value?.totalSize || (fileData.value?.length || 0),
+    chunk_size: cartHeader.value?.chunkSize || 51,
+    network: 'mainnet',
+    sender_address: publisherAddress.value || '',
+    sha256: cartHeader.value?.sha256 || '',
+    platform: platformName,
+    executable: runJson.value?.executable || null,
+    title: runJson.value?.title || selectedGame.value?.title || null
+  }
+})
+
+// Emulator composables
+const dosEmulator = useDosEmulator(manifestForEmulator, fileData, verified, loading, error, gameReady)
+const gbEmulator = useGbEmulator(manifestForEmulator, fileData, verified, loading, error, gameReady)
 
 // Wrapper functions that get the container element and call the composable
 async function runGame() {
@@ -326,14 +414,28 @@ async function runGame() {
     return
   }
   
-  await dosEmulator.runGame(containerElement)
+  // Route to appropriate emulator based on platform
+  const platform = manifestForEmulator.value?.platform || 'DOS'
+  if (platform === 'DOS') {
+    await dosEmulator.runGame(containerElement)
+  } else if (platform === 'GB' || platform === 'GBC') {
+    await gbEmulator.runGame(containerElement)
+  } else {
+    error.value = `Emulator for platform "${platform}" not yet implemented`
+  }
 }
 
 async function stopGame() {
   const emulatorComponent = emulatorContainerRef.value?.emulatorRef
   const containerElement = emulatorComponent?.gameContainer
   
-  await dosEmulator.stopGame(containerElement)
+  // Route to appropriate emulator based on platform
+  const platform = manifestForEmulator.value?.platform || 'DOS'
+  if (platform === 'DOS') {
+    await dosEmulator.stopGame(containerElement)
+  } else if (platform === 'GB' || platform === 'GBC') {
+    await gbEmulator.stopGame(containerElement)
+  }
 }
 
 // Developer mode
@@ -344,7 +446,7 @@ const localFileName = ref(null)
 function onRpcEndpointChange(newEndpoint) {
   selectedRpcEndpoint.value = newEndpoint
   if (newEndpoint !== 'custom') {
-    rpcClient = new NimiqRPC(newEndpoint)
+    rpcClient.value = new NimiqRPC(newEndpoint)
   }
 }
 
@@ -352,21 +454,23 @@ function onCustomRpcEndpointChange(newUrl) {
   customRpcEndpoint.value = newUrl
   if (newUrl) {
     selectedRpcEndpoint.value = newUrl
-    rpcClient = new NimiqRPC(newUrl)
+    rpcClient.value = new NimiqRPC(newUrl)
   }
 }
 
-// Clear cache and force re-sync
-async function clearCacheAndResync() {
-  if (!manifest.value) return
+// Download file helper
+function downloadFile() {
+  if (!fileData.value) return
   
-  await clearCache(manifest.value)
-  loadedFromCache.value = false
-  fileData.value = null
-  verified.value = false
-  
-  // Re-sync from blockchain
-  await syncChunks()
+  const blob = new Blob([fileData.value], { type: 'application/zip' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = runJson.value?.filename || 'game.zip'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 // Wrapper functions that get the container element and call the composable
@@ -426,19 +530,21 @@ async function runLocalGame() {
       chunk_size: 51,
       network: 'local',
       sender_address: 'LOCAL',
-      sha256: '' // Will be computed if needed
+      sha256: '', // Will be computed if needed
+      platform: 'DOS'
     }
     
     // Set fileData and verified to allow running
     fileData.value = localFileData.value
     verified.value = true
-    manifest.value = tempManifest
-    syncProgress.value = { 
-      fetched: 0, 
-      total: 0, 
-      bytes: localFileData.value.length,
-      rate: 0
+    cartHeader.value = {
+      cartridgeId: 0,
+      totalSize: localFileData.value.length,
+      chunkSize: 51,
+      sha256: '',
+      platform: 0 // DOS
     }
+    runJson.value = null
     
     // Now run the game using the existing runGame function
     await runGame()
@@ -463,8 +569,12 @@ onMounted(() => {
   // Add keyboard listener for developer mode
   window.addEventListener('keydown', handleKeyDown)
   
-  // Auto-load manifests list on mount
-  loadManifestsList()
+  // Auto-load catalog on mount if catalog address is configured
+  if (catalogAddress.value) {
+    loadCatalog()
+  } else {
+    console.warn('Catalog address not configured. Please set CATALOG_ADDRESS.')
+  }
 })
 
 onUnmounted(() => {

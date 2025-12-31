@@ -13,6 +13,9 @@
     v-else-if="platform === 'GB' || platform === 'GBC'"
     :verified="verified"
     :loading="loading"
+    :game-ready="gameReady"
+    @run-game="$emit('run-game')"
+    @stop-game="$emit('stop-game')"
     @download-file="$emit('download-file')"
     ref="emulatorRef"
   />
