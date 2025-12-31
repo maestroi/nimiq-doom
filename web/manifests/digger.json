@@ -1,5 +1,7 @@
 {
   "game_id": 10,
+  "title": "Digger Remastered",
+  "platform": "DOS",
   "filename": "digger.zip",
   "total_size": 56659,
   "chunk_size": 51,

@@ -41,6 +41,8 @@ for manifest_file in "$MANIFESTS_DIR"/*.json; do
     if command -v jq &> /dev/null; then
         # Use jq to extract manifest info
         game_id=$(jq -r '.game_id // empty' "$manifest_file" 2>/dev/null || echo "")
+        title=$(jq -r '.title // empty' "$manifest_file" 2>/dev/null || echo "")
+        platform=$(jq -r '.platform // empty' "$manifest_file" 2>/dev/null || echo "")
         filename=$(jq -r '.filename // empty' "$manifest_file" 2>/dev/null || echo "")
         total_size=$(jq -r '.total_size // 0' "$manifest_file" 2>/dev/null || echo "0")
         tx_count=$(jq -r '.expected_tx_hashes | length // 0' "$manifest_file" 2>/dev/null || echo "0")
@@ -49,6 +51,8 @@ for manifest_file in "$MANIFESTS_DIR"/*.json; do
     else
         # Fallback: use grep/sed (less reliable but works without jq)
         game_id=$(grep -o '"game_id"[[:space:]]*:[[:space:]]*[0-9]*' "$manifest_file" | grep -o '[0-9]*' | head -1 || echo "")
+        title=$(grep -o '"title"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest_file" | sed 's/.*"title"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1 || echo "")
+        platform=$(grep -o '"platform"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest_file" | sed 's/.*"platform"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1 || echo "")
         filename=$(grep -o '"filename"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest_file" | sed 's/.*"filename"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1 || echo "")
         total_size=$(grep -o '"total_size"[[:space:]]*:[[:space:]]*[0-9]*' "$manifest_file" | grep -o '[0-9]*' | head -1 || echo "0")
         tx_count=$(grep -c '"expected_tx_hashes"' "$manifest_file" >/dev/null && grep -o '"expected_tx_hashes"[[:space:]]*:[[:space:]]*\[[^]]*\]' "$manifest_file" | grep -o '"[^"]*"' | wc -l | tr -d ' ' || echo "0")
@@ -63,6 +67,8 @@ for manifest_file in "$MANIFESTS_DIR"/*.json; do
     FIRST=false
     
     # Escape quotes in strings for JSON safety
+    title_escaped=$(echo "$title" | sed 's/"/\\"/g')
+    platform_escaped=$(echo "$platform" | sed 's/"/\\"/g')
     filename_escaped=$(echo "$filename" | sed 's/"/\\"/g')
     network_escaped=$(echo "$network" | sed 's/"/\\"/g')
     sender_address_escaped=$(echo "$sender_address" | sed 's/"/\\"/g')
@@ -72,6 +78,8 @@ for manifest_file in "$MANIFESTS_DIR"/*.json; do
   {
     "name": "$manifest_name",
     "game_id": ${game_id:-0},
+    "title": "$title_escaped",
+    "platform": "$platform_escaped",
     "filename": "$filename_escaped",
     "total_size": ${total_size:-0},
     "chunk_size": 51,

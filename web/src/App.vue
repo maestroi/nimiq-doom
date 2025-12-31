@@ -49,7 +49,7 @@
               >
                 <option value="">-- Select --</option>
                 <option v-for="m in manifests" :key="m.name" :value="m.name">
-                  {{ m.name }}
+                  {{ m.title || m.filename || m.name }}
                 </option>
               </select>
               <button
@@ -123,32 +123,59 @@
               Loaded: {{ localFileName }} ({{ formatBytes(localFileData?.length || 0) }})
             </p>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-purple-200 mb-2">
-              Sync Speed Override (tx/s)
-            </label>
-            <div class="flex gap-2 items-center">
-              <input
-                type="number"
-                v-model.number="devSyncSpeed"
-                min="1"
-                max="1000"
-                placeholder="Auto (default)"
-                class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <button
-                @click="devSyncSpeed = null"
-                class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
-                title="Reset to default"
-              >
-                Reset
-              </button>
-            </div>
-            <p class="mt-1 text-xs text-purple-300">
-              Override sync speed for testing. Default: 50 tx/s (public) or 10 tx/s (custom). 
-              {{ devSyncSpeed ? `Current: ${devSyncSpeed} tx/s` : 'Using default rate limiting' }}
-            </p>
-          </div>
+           <div>
+             <label class="block text-sm font-medium text-purple-200 mb-2">
+               Sync Speed Override (tx/s)
+             </label>
+             <div class="flex gap-2 items-center">
+               <input
+                 type="number"
+                 v-model.number="devSyncSpeed"
+                 min="1"
+                 max="1000"
+                 placeholder="Auto (default)"
+                 class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+               />
+               <button
+                 @click="devSyncSpeed = null"
+                 class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
+                 title="Reset to default"
+               >
+                 Reset
+               </button>
+             </div>
+             <p class="mt-1 text-xs text-purple-300">
+               Override sync speed for testing. Default: 50 tx/s (public) or 10 tx/s (custom). 
+               {{ devSyncSpeed ? `Current: ${devSyncSpeed} tx/s` : 'Using default rate limiting' }}
+             </p>
+           </div>
+           <div>
+             <label class="block text-sm font-medium text-purple-200 mb-2">
+               Delay Override (ms between requests)
+             </label>
+             <div class="flex gap-2 items-center">
+               <input
+                 type="number"
+                 v-model.number="devSyncDelay"
+                 min="0"
+                 max="10000"
+                 step="1"
+                 placeholder="Auto (calculated from speed)"
+                 class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+               />
+               <button
+                 @click="devSyncDelay = null"
+                 class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
+                 title="Reset to default"
+               >
+                 Reset
+               </button>
+             </div>
+             <p class="mt-1 text-xs text-purple-300">
+               Override delay between requests (in milliseconds). If set, takes precedence over speed override.
+               {{ devSyncDelay !== null ? `Current: ${devSyncDelay}ms (${(1000/devSyncDelay).toFixed(1)} tx/s)` : 'Using calculated delay from speed' }}
+             </p>
+           </div>
           <div class="pt-2 border-t border-purple-700/50">
             <p class="text-xs text-purple-300">
               💡 This mode allows you to test games locally before uploading to the blockchain. 
@@ -215,13 +242,17 @@
           </div>
           <div class="px-4 py-5 sm:p-6">
             <dl class="space-y-2">
-            <div>
-              <dt class="text-xs font-medium text-gray-400">Game ID</dt>
-              <dd class="mt-0.5 text-sm text-white font-mono">{{ manifest.game_id }}</dd>
+            <div v-if="manifest.title">
+              <dt class="text-xs font-medium text-gray-400">Title</dt>
+              <dd class="mt-0.5 text-sm text-white font-semibold">{{ manifest.title }}</dd>
+            </div>
+            <div v-if="manifest.platform">
+              <dt class="text-xs font-medium text-gray-400">Platform</dt>
+              <dd class="mt-0.5 text-sm text-white">{{ manifest.platform }}</dd>
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-400">Filename</dt>
-              <dd class="mt-0.5 text-sm text-white">{{ manifest.filename }}</dd>
+              <dd class="mt-0.5 text-sm text-white font-mono text-xs">{{ manifest.filename }}</dd>
             </div>
             <div>
               <dt class="text-xs font-medium text-gray-400">Total Size</dt>
@@ -271,17 +302,18 @@
 
             <!-- Sync Progress (smaller, under manifest) -->
             <div v-if="syncProgress.total > 0" class="mt-4 pt-4 border-t border-gray-700 dark:border-white/10">
-            <h3 class="text-sm font-semibold text-white mb-2">Sync Progress</h3>
+              <h3 class="text-sm font-semibold text-white mb-2">Sync Progress</h3>
             <div class="space-y-2">
               <div>
                 <div class="flex justify-between text-xs mb-1">
                   <span class="text-gray-400">Chunks</span>
                   <span class="text-white font-medium">{{ syncProgress.fetched.toLocaleString() }} / {{ syncProgress.total.toLocaleString() }}</span>
                 </div>
-                <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden relative">
                   <div
-                    class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                    :style="{ width: syncProgressPercent + '%' }"
+                    class="bg-indigo-600 h-full rounded-full transition-all duration-300 absolute left-0 top-0"
+                    :style="{ width: `${Math.round(syncProgressPercent)}%` }"
+                    :title="`${Math.round(syncProgressPercent)}% (${syncProgress.fetched}/${syncProgress.total})`"
                   ></div>
                 </div>
               </div>
@@ -290,10 +322,10 @@
                   <span class="text-gray-400">Bytes</span>
                   <span class="text-white font-medium">{{ formatBytes(syncProgress.bytes) }} / {{ formatBytes(manifest?.total_size || 0) }}</span>
                 </div>
-                <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden relative">
                   <div
-                    class="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    :style="{ width: manifest ? (syncProgress.bytes / manifest.total_size * 100) + '%' : '0%' }"
+                    class="bg-green-600 h-full rounded-full transition-all duration-300 absolute left-0 top-0"
+                    :style="{ width: manifest && manifest.total_size > 0 ? `${Math.min(100, Math.max(0, (syncProgress.bytes / manifest.total_size * 100)))}%` : '0%' }"
                   ></div>
                 </div>
               </div>
@@ -443,6 +475,7 @@ const developerMode = ref(false)
 const localFileData = ref(null)
 const localFileName = ref(null)
 const devSyncSpeed = ref(null) // Developer sync speed override (tx/s), null = use default
+const devSyncDelay = ref(null) // Developer sync delay override (ms), null = use calculated from speed
 
 // RPC endpoint configuration
 const rpcEndpoints = ref([
@@ -456,7 +489,10 @@ let rpcClient = new NimiqRPC(selectedRpcEndpoint.value)
 
 const syncProgressPercent = computed(() => {
   if (syncProgress.value.total === 0) return 0
-  return (syncProgress.value.fetched / syncProgress.value.total) * 100
+  // Ensure we don't exceed 100%
+  const percent = (syncProgress.value.fetched / syncProgress.value.total) * 100
+  const clamped = Math.min(100, Math.max(0, percent))
+  return clamped
 })
 
 // Calculate estimated time remaining and current rate
@@ -687,6 +723,8 @@ async function loadManifestsList() {
             loadedManifests.push({
               name: name,
               game_id: manifestData.game_id,
+              title: manifestData.title,
+              platform: manifestData.platform,
               filename: manifestData.filename,
               total_size: manifestData.total_size,
               chunk_size: manifestData.chunk_size || 51,
@@ -844,21 +882,44 @@ async function syncChunks() {
     const chunks = new Map()
     const expectedHashes = manifest.value.expected_tx_hashes
     
+    // Set total to the exact number of expected transactions (this is our 100%)
+    // This is the definitive count we know from the manifest - this is what we're syncing
+    if (!expectedHashes || expectedHashes.length === 0) {
+      error.value = 'Manifest has no expected transaction hashes. Cannot sync chunks.'
+      loading.value = false
+      return
+    }
+    
     syncProgress.value.total = expectedHashes.length
+    syncProgress.value.fetched = 0 // Reset fetched count at start
+    syncProgress.value.bytes = 0 // Reset bytes at start
+    console.log(`Starting sync: ${syncProgress.value.total} transactions to fetch (100%)`)
     
     // Rate limiting: public endpoints get rate limited, custom endpoints don't
     const currentEndpoint = selectedRpcEndpoint.value === 'custom' ? customRpcEndpoint.value : selectedRpcEndpoint.value
     const isCustomEndpoint = selectedRpcEndpoint.value === 'custom' || 
                             (currentEndpoint && !currentEndpoint.includes('nimiqscan.com'))
     
-    // Use developer override if set, otherwise use defaults
-    const maxRequestsPerSecond = devSyncSpeed.value !== null && devSyncSpeed.value > 0 
-      ? devSyncSpeed.value 
-      : (isCustomEndpoint ? 10 : 50) // 50 req/s for public, 10 for custom
-    const delayBetweenRequests = 1000 / maxRequestsPerSecond // milliseconds
-    
-    const speedSource = devSyncSpeed.value !== null ? 'developer override' : (isCustomEndpoint ? 'custom endpoint' : 'public endpoint')
-    console.log(`Rate limiting: ${maxRequestsPerSecond} req/s (${speedSource}), delay: ${delayBetweenRequests.toFixed(2)}ms`)
+     // Use developer delay override if set (takes precedence), otherwise calculate from speed override or defaults
+     let delayBetweenRequests
+     let maxRequestsPerSecond
+     let speedSource
+     
+     if (devSyncDelay.value !== null && devSyncDelay.value >= 0) {
+       // Direct delay override takes precedence
+       delayBetweenRequests = devSyncDelay.value
+       maxRequestsPerSecond = 1000 / delayBetweenRequests
+       speedSource = 'developer delay override'
+     } else {
+       // Use developer speed override if set, otherwise use defaults
+       maxRequestsPerSecond = devSyncSpeed.value !== null && devSyncSpeed.value > 0 
+         ? devSyncSpeed.value 
+         : (isCustomEndpoint ? 10 : 50) // 50 req/s for public, 10 for custom
+       delayBetweenRequests = 1000 / maxRequestsPerSecond // milliseconds
+       speedSource = devSyncSpeed.value !== null ? 'developer speed override' : (isCustomEndpoint ? 'custom endpoint' : 'public endpoint')
+     }
+     
+     console.log(`Rate limiting: ${maxRequestsPerSecond.toFixed(1)} req/s (${speedSource}), delay: ${delayBetweenRequests.toFixed(2)}ms`)
     
     // Track request times for rate limiting
     const requestTimes = []
@@ -876,8 +937,8 @@ async function syncChunks() {
         // Rate limiting: ensure we don't exceed maxRequestsPerSecond
         // Only apply delay if request was faster than the minimum delay between requests
         // This way we account for actual request time and only wait if needed
-        // Apply rate limiting if: developer override is set, OR it's a public endpoint
-        const shouldRateLimit = devSyncSpeed.value !== null || !isCustomEndpoint
+        // Apply rate limiting if: developer override is set (speed or delay), OR it's a public endpoint
+        const shouldRateLimit = (devSyncSpeed.value !== null || devSyncDelay.value !== null) || !isCustomEndpoint
         if (shouldRateLimit && i < expectedHashes.length - 1) {
           const minDelay = delayBetweenRequests
           if (requestDuration < minDelay) {
@@ -887,8 +948,15 @@ async function syncChunks() {
         }
         
         // Update progress after successful fetch
+        // i is 0-indexed, so i+1 is the current transaction number (1, 2, 3...)
         syncProgress.value.fetched = i + 1
         updateEstimatedTime()
+        
+        // Log progress every 10% or every 100 transactions, whichever is more frequent
+        if ((i + 1) % Math.max(1, Math.floor(expectedHashes.length / 10)) === 0 || (i + 1) % 100 === 0) {
+          const currentPercent = ((i + 1) / expectedHashes.length * 100).toFixed(1)
+          console.log(`Sync progress: ${i + 1}/${expectedHashes.length} (${currentPercent}%)`)
+        }
         
         // Get transaction data (recipientData or data field)
         const txData = tx.recipientData || tx.data || ''
@@ -930,13 +998,22 @@ async function syncChunks() {
       }
     }
 
+    // At this point, syncProgress.fetched should equal syncProgress.total (all transactions fetched)
+    console.log(`Sync complete: fetched ${syncProgress.value.fetched}/${syncProgress.value.total} transactions, found ${chunks.size} valid chunks`)
+    
+    // Ensure progress shows 100% at completion
+    syncProgress.value.fetched = syncProgress.value.total
+    
     if (chunks.size === 0) {
       error.value = 'No chunks found. Transactions may not be confirmed yet or RPC endpoint may be unavailable.'
+      loading.value = false
       return
     }
 
     if (chunks.size < totalChunks) {
       error.value = `Only found ${chunks.size} of ${totalChunks} expected chunks. Some transactions may not be confirmed yet.`
+      loading.value = false
+      return
     }
 
     // Reconstruct file

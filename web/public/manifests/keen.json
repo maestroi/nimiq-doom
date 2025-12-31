@@ -1,5 +1,7 @@
 {
   "game_id": 9,
+  "title": "Commander Keen 1",
+  "platform": "DOS",
   "filename": "keen1.zip",
   "total_size": 198179,
   "chunk_size": 51,

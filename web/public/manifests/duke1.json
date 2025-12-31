@@ -1,5 +1,7 @@
 {
   "game_id": 2,
+  "title": "Duke Nukem 1",
+  "platform": "DOS",
   "filename": "duke1.zip",
   "executable": "dn1.exe",
   "total_size": 273803,

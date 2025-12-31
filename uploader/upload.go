@@ -38,6 +38,8 @@ func newUploadCmd() *cobra.Command {
 		generateManifest bool
 		manifestOutput   string
 		network          string
+		title            string // Display title of the game
+		platform         string // Platform (e.g., "DOS", "Windows")
 	)
 
 	cmd := &cobra.Command{
@@ -190,7 +192,7 @@ func newUploadCmd() *cobra.Command {
 
 				// Generate manifest automatically after successful upload
 				if generateManifest {
-					if err := generateManifestAfterUpload(filePath, gameID, sender, network, manifestOutput, progressFile); err != nil {
+					if err := generateManifestAfterUpload(filePath, gameID, sender, network, manifestOutput, progressFile, title, platform); err != nil {
 						fmt.Printf("Warning: Failed to generate manifest: %v\n", err)
 					} else {
 						fmt.Printf("\n✓ Manifest generated: %s\n", manifestOutput)
@@ -213,6 +215,8 @@ func newUploadCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&generateManifest, "manifest", true, "Generate manifest.json after upload completes")
 	cmd.Flags().StringVar(&manifestOutput, "manifest-output", "", "Manifest output file (default: manifest.json)")
 	cmd.Flags().StringVar(&network, "network", "", "Network for manifest (mainnet/testnet) (or set NIMIQ_NETWORK)")
+	cmd.Flags().StringVar(&title, "title", "", "Display title of the game (e.g., \"Digger Remastered\")")
+	cmd.Flags().StringVar(&platform, "platform", "", "Platform (e.g., \"DOS\", \"Windows\", \"Linux\")")
 
 	cmd.MarkFlagRequired("file")
 	cmd.MarkFlagRequired("game-id")
@@ -231,7 +235,7 @@ func saveProgress(filename string, progress *UploadProgress) {
 	}
 }
 
-func generateManifestAfterUpload(filePath string, gameID uint32, sender string, network string, output string, progressFile string) error {
+func generateManifestAfterUpload(filePath string, gameID uint32, sender string, network string, output string, progressFile string, title string, platform string) error {
 	// Determine network
 	if network == "" {
 		network = os.Getenv("NIMIQ_NETWORK")
@@ -258,6 +262,8 @@ func generateManifestAfterUpload(filePath string, gameID uint32, sender string, 
 
 	manifest := Manifest{
 		GameID:        gameID,
+		Title:         title,
+		Platform:      platform,
 		Filename:      filename,
 		Executable:    "", // Can be set manually after manifest generation
 		TotalSize:     uint64(len(data)),

@@ -11,6 +11,8 @@ import (
 
 type Manifest struct {
 	GameID       uint32 `json:"game_id"`
+	Title        string `json:"title,omitempty"` // Display name of the game (e.g., "Digger Remastered")
+	Platform     string `json:"platform,omitempty"` // Platform (e.g., "DOS", "Windows", "Linux")
 	Filename     string `json:"filename"`
 	Executable   string `json:"executable,omitempty"` // Optional: specifies which .exe/.com/.bat to run
 	TotalSize    uint64 `json:"total_size"`
@@ -31,6 +33,8 @@ func newManifestCmd() *cobra.Command {
 		network       string
 		output        string
 		progressFile  string // Path to upload_progress_*.json file
+		title         string // Display title of the game
+		platform      string // Platform (e.g., "DOS", "Windows")
 	)
 
 	cmd := &cobra.Command{
@@ -62,6 +66,8 @@ func newManifestCmd() *cobra.Command {
 
 			manifest := Manifest{
 				GameID:       gameID,
+				Title:        title,
+				Platform:     platform,
 				Filename:     filename,
 				Executable:   "", // Can be set manually after manifest generation
 				TotalSize:    uint64(len(data)),
@@ -133,6 +139,8 @@ func newManifestCmd() *cobra.Command {
 	cmd.Flags().StringVar(&network, "network", "", "Network (mainnet/testnet) (or set NIMIQ_NETWORK)")
 	cmd.Flags().StringVar(&output, "output", "manifest.json", "Output manifest file")
 	cmd.Flags().StringVar(&progressFile, "progress-file", "", "Path to upload_progress_*.json file (defaults to upload_progress_{game-id}.json)")
+	cmd.Flags().StringVar(&title, "title", "", "Display title of the game (e.g., \"Digger Remastered\")")
+	cmd.Flags().StringVar(&platform, "platform", "", "Platform (e.g., \"DOS\", \"Windows\", \"Linux\")")
 
 	cmd.MarkFlagRequired("file")
 	cmd.MarkFlagRequired("game-id")
