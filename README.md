@@ -1,6 +1,6 @@
-# Nimiq DOS Games Onchain
+# Nimiq: Retro Games Onchain
 
-A project that stores DOS game files (and other binaries) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it using DOS emulators like DOSBox or JS-DOS.
+A project that stores retro game files (DOS, Game Boy, and other classic games) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it using emulators like DOSBox, JS-DOS, or Game Boy emulators.
 
 **🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
 
@@ -9,7 +9,7 @@ A project that stores DOS game files (and other binaries) on the Nimiq blockchai
 ## Architecture
 
 - **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq blockchain
-- **Web** (Vue 3): Frontend that connects directly to public Nimiq RPC endpoints to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using JS-DOS
+- **Web** (Vue 3): Frontend that connects directly to public Nimiq RPC endpoints to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using emulators (JS-DOS for DOS games, with support for Game Boy and other platforms)
 
 **Key Features:**
 - ✅ **No Backend Required** - Frontend connects directly to public Nimiq RPC endpoints
@@ -180,9 +180,9 @@ The uploader can wait until your account has sufficient NIM:
   --rpc-url http://localhost:8648
 ```
 
-## Packaging DOS Games
+## Packaging Games
 
-Before uploading to the blockchain, package your DOS game files into a ZIP file that's compatible with JS-DOS:
+Before uploading to the blockchain, package your game files into a ZIP file. For DOS games, ensure compatibility with JS-DOS:
 
 ### Using the Package Script
 
@@ -199,9 +199,9 @@ Before uploading to the blockchain, package your DOS game files into a ZIP file 
 
 The script will:
 - Create a ZIP file with all game files
-- Auto-detect the game executable (.exe, .com, or .bat)
+- Auto-detect the game executable (.exe, .com, or .bat for DOS games)
 - Calculate SHA256 hash
-- Ensure proper file structure for JS-DOS emulator
+- Ensure proper file structure for emulators (JS-DOS for DOS games)
 
 ### Using the Go Package Tool Directly
 
@@ -214,13 +214,13 @@ cd uploader
 ```
 
 **Important:** The ZIP file should contain:
-- Game executable (.exe, .com, or .bat)
-- Game data files (.WAD, .DAT, etc.)
+- Game executable (.exe, .com, or .bat for DOS games; .gb/.gbc for Game Boy games)
+- Game data files (.WAD, .DAT, etc. for DOS games; ROM files for Game Boy)
 - Any other required files
 
-The ZIP structure will be preserved, and JS-DOS will be able to extract and run the game directly in the browser after syncing from the blockchain.
+The ZIP structure will be preserved, and emulators will be able to extract and run the game directly in the browser after syncing from the blockchain.
 
-### Handling IMG Disk Images
+### Handling DOS IMG Disk Images
 
 Some DOS games come as IMG disk image files. The frontend automatically detects IMG files and mounts them using DOSBox's `imgmount` command.
 
@@ -306,16 +306,15 @@ The Vue 3 frontend provides:
 3. **Sync Chunks** - Fetches transactions directly from blockchain by hash
 4. **Progress Tracking** - Shows chunks fetched, bytes downloaded, and completion percentage
 5. **Verify SHA256** - Browser-side verification using WebCrypto API (automatic after sync)
-6. **Run Game** - Integrates with JS-DOS to run games directly in the browser
+6. **Run Game** - Integrates with emulators (JS-DOS for DOS games) to run games directly in the browser
 
-### JS-DOS Integration
+### Emulator Integration
 
 The frontend automatically:
 - Extracts game files from ZIP archives using JSZip
-- Mounts IMG disk images using DOSBox's `imgmount` command
-- Writes files to JS-DOS virtual filesystem
-- Executes game executables (.exe, .com, .bat)
-- Creates AUTOEXEC.BAT files for automatic game startup
+- **DOS Games**: Mounts IMG disk images using DOSBox's `imgmount` command, writes files to JS-DOS virtual filesystem, executes game executables (.exe, .com, .bat), creates AUTOEXEC.BAT files for automatic game startup
+- **Game Boy Games**: Support for Game Boy emulators (coming soon)
+- **Other Platforms**: Extensible architecture for additional emulator support
 
 **Note:** Game assets are not included due to copyright. Users must upload their own games to the blockchain.
 
@@ -408,9 +407,9 @@ cp manifest.json ../manifests/testfile.json
 
 3. **Execution Phase:**
    - If the file is a ZIP, extracts it using JSZip
-   - Writes files to JS-DOS virtual filesystem
-   - Mounts IMG files if detected
-   - Executes the game executable
+   - **DOS Games**: Writes files to JS-DOS virtual filesystem, mounts IMG files if detected, executes the game executable
+   - **Game Boy Games**: Loads ROM files into Game Boy emulator (coming soon)
+   - **Other Platforms**: Platform-specific emulator integration
 
 ## License
 
