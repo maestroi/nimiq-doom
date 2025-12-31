@@ -253,12 +253,92 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
       iframe.style.minHeight = '400px'
       iframe.style.aspectRatio = '4/3'
       iframe.style.backgroundColor = '#000'
+      iframe.tabIndex = 0 // Make iframe focusable for keyboard input
+      iframe.setAttribute('tabindex', '0')
+      
+      // Helper function to focus the iframe and its content
+      const focusIframe = () => {
+        iframe.focus()
+        try {
+          const iframeWindow = iframe.contentWindow
+          const iframeDoc = iframe.contentDocument || iframeWindow?.document
+          if (iframeWindow) {
+            iframeWindow.focus()
+          }
+          if (iframeDoc) {
+            const canvas = iframeDoc.getElementById('jsdos-canvas')
+            if (canvas) {
+              canvas.focus()
+            }
+            // Also focus the body to ensure keyboard events are captured
+            if (iframeDoc.body) {
+              iframeDoc.body.focus()
+            }
+          }
+        } catch (e) {
+          // Cross-origin or not ready yet, ignore
+          console.warn('Could not focus iframe content:', e)
+        }
+      }
+      
+      // Add click handler to focus the iframe when clicked
+      iframe.addEventListener('click', focusIframe)
+      
+      // Also add mousedown handler (fires before click, better for focus)
+      iframe.addEventListener('mousedown', () => {
+        focusIframe()
+      })
+      
       containerElement.appendChild(iframe)
       emulatorIframe.value = iframe
       
       // Wait for iframe to be ready
       await new Promise(resolve => {
-        iframe.onload = resolve
+        iframe.onload = () => {
+          // Focus the iframe and canvas after it loads
+          setTimeout(() => {
+            try {
+              const iframeWindow = iframe.contentWindow
+              const iframeDoc = iframe.contentDocument || iframeWindow?.document
+              
+              if (iframeWindow) {
+                iframeWindow.focus()
+              }
+              iframe.focus()
+              
+              if (iframeDoc) {
+                const canvas = iframeDoc.getElementById('jsdos-canvas')
+                if (canvas) {
+                  canvas.tabIndex = 0
+                  canvas.setAttribute('tabindex', '0')
+                  canvas.focus()
+                  
+                  // Add click and mousedown handlers to canvas for focus
+                  canvas.addEventListener('click', () => {
+                    canvas.focus()
+                    iframeWindow?.focus()
+                    iframe.focus()
+                  })
+                  canvas.addEventListener('mousedown', () => {
+                    canvas.focus()
+                    iframeWindow?.focus()
+                    iframe.focus()
+                  })
+                }
+                
+                // Make body focusable and focus it
+                if (iframeDoc.body) {
+                  iframeDoc.body.tabIndex = 0
+                  iframeDoc.body.setAttribute('tabindex', '0')
+                }
+              }
+            } catch (e) {
+              // Cross-origin, ignore
+              console.warn('Could not focus iframe on load:', e)
+            }
+          }, 100)
+          resolve()
+        }
         // Set minimal HTML content for the iframe
         iframe.srcdoc = `<!DOCTYPE html>
 <html>
@@ -266,11 +346,12 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-    canvas { width: 100%; height: auto; max-width: 100%; image-rendering: pixelated; display: block; }
+    canvas { width: 100%; height: auto; max-width: 100%; image-rendering: pixelated; display: block; outline: none; }
+    canvas:focus { outline: 2px solid rgba(255, 255, 255, 0.3); outline-offset: -2px; }
   </style>
 </head>
 <body>
-  <canvas id="jsdos-canvas" width="640" height="400"></canvas>
+  <canvas id="jsdos-canvas" width="640" height="400" tabindex="0"></canvas>
 </body>
 </html>`
       })
@@ -617,6 +698,32 @@ ipx=false
 
       dosRuntime.value = dosbox
       console.log('Game started successfully')
+      
+      // Focus the iframe and canvas after game starts to capture input
+      setTimeout(() => {
+        try {
+          const iframeWindow = iframe.contentWindow
+          const iframeDoc = iframe.contentDocument || iframeWindow?.document
+          
+          if (iframeWindow) {
+            iframeWindow.focus()
+          }
+          iframe.focus()
+          
+          if (iframeDoc) {
+            const canvas = iframeDoc.getElementById('jsdos-canvas')
+            if (canvas) {
+              canvas.focus()
+            }
+            if (iframeDoc.body) {
+              iframeDoc.body.focus()
+            }
+          }
+        } catch (e) {
+          // Cross-origin, ignore
+          console.warn('Could not focus iframe after game start:', e)
+        }
+      }, 500)
 
     } catch (err) {
       const errorMsg = err?.message || String(err) || 'Unknown error'
