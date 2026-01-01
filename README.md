@@ -231,10 +231,14 @@ cd uploader
 ```
 
 **Important:** The ZIP file should contain:
-- `run.json` (optional but recommended) - See [RUN_JSON.md](RUN_JSON.md) for format
+- `run.json` (optional but recommended) - This replaces the old manifest.json system. See [RUN_JSON.md](RUN_JSON.md) for format
 - Game executable (.exe, .com, or .bat for DOS games; .gb/.gbc for Game Boy games)
 - Game data files (.WAD, .DAT, etc. for DOS games; ROM files for Game Boy)
 - Any other required files
+
+**Note:** There are no manifest.json files anymore. Metadata is stored in:
+- Catalog entries (CENT) for game discovery and versioning
+- `run.json` (inside ZIP) for emulator configuration
 
 The ZIP structure will be preserved, and emulators will be able to extract and run the game directly in the browser after syncing from the blockchain.
 
@@ -412,7 +416,13 @@ The frontend automatically:
 
 ## run.json Format
 
-The `run.json` file is an optional metadata file that should be included in the ZIP archive. It provides additional information about how to run the game.
+The `run.json` file is an optional metadata file that should be included in the ZIP archive. It replaces the old `manifest.json` system and provides additional information about how to run the game.
+
+**Key differences from old manifest system:**
+- `run.json` is stored **inside the ZIP file**, not as a separate file
+- No transaction hashes needed - the catalog system handles discovery
+- Simpler format focused on emulator configuration
+- Platform, title, and executable/ROM paths are specified here
 
 See [RUN_JSON.md](RUN_JSON.md) for complete documentation.
 
@@ -535,7 +545,8 @@ cd uploader
 
 4. **Execution Phase:**
    - If the file is a ZIP, extracts it using JSZip
-   - Extracts `run.json` if present for emulator configuration
+   - Extracts `run.json` if present (replaces old manifest.json) for emulator configuration
+   - Falls back to catalog/platform information if `run.json` is missing
    - **DOS Games**: Writes files to JS-DOS virtual filesystem, mounts IMG files if detected, executes the game executable
    - **Game Boy Games**: Loads ROM files into binjgb emulator
    - **NES Games**: Loads ROM files into NES emulator
@@ -543,15 +554,22 @@ cd uploader
 
 ## Migration from Old System
 
-**⚠️ The old "DOOM" magic bytes system is deprecated and no longer supported.**
+**⚠️ The old system is deprecated and no longer supported.**
+
+The old system used:
+- "DOOM" magic bytes in transaction payloads
+- Separate `manifest.json` files stored in a `manifests/` directory
+- Transaction hashes stored in manifest files
+- Manual manifest management
 
 The new cartridge system provides:
-- Better organization with catalog-based discovery
-- Version management with semantic versioning
-- Platform support beyond DOS
-- Improved metadata handling
+- **Catalog-based discovery** - Games are discovered via catalog addresses (CENT entries)
+- **Version management** - Automatic versioning with semantic versioning (semver)
+- **Platform support** - DOS, Game Boy, Game Boy Color, NES, and more
+- **run.json metadata** - Optional metadata stored inside ZIP files (replaces manifest.json)
+- **No manifest files** - Everything is stored on-chain in catalog and cartridge addresses
 
-Old manifests and uploads using the "DOOM" magic bytes format will not work with the current frontend.
+**Old uploads and manifest files will not work with the current frontend.** You must re-upload games using the new `upload-cartridge` command.
 
 ## License
 
