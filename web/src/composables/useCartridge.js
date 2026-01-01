@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { parseCART, parseDATA, computeExpectedChunks, verifySHA256, hexToBytes, normalizeAddress } from '../utils/payloads.js'
+import { parseCART, parseDATA, computeExpectedChunks, verifySHA256, hexToBytes, normalizeAddress, isDataMagicHex } from '../utils/payloads.js'
 import { useCache } from './useCache.js'
 
 /**
@@ -205,6 +205,7 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
 
   /**
    * Load cartridge from blockchain (full download)
+   * OPTIMIZED: Uses streaming + quick magic check + reduced UI yields
    */
   async function loadCartridge() {
     if (!cartridgeAddress.value || !rpcClient.value) {
@@ -376,103 +377,92 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       progress.value.expectedChunks = expectedChunks
       progress.value.chunksFound = 0
       progress.value.phase = 'fetching-txs'
-      progress.value.statusMessage = 'Fetching transactions from blockchain...'
+      progress.value.statusMessage = 'Streaming transactions from blockchain...'
       progress.value.txPagesFetched = 0
       progress.value.txTotalFetched = 0
-      progress.value.txEstimatedPages = 0
+      progress.value.txEstimatedPages = Math.ceil(expectedChunks / 500) // Estimate based on expected chunks
       
-      // Now fetch ALL transactions for the full download (we need all chunks)
-      console.log('Fetching all transactions for download...')
-      const allTxs = await rpcClient.value.getAllTransactionsByAddress(
+      // OPTIMIZED: Stream transactions and parse as they arrive
+      // Uses quick magic byte check to skip non-DATA transactions
+      console.log('Starting optimized streaming download...')
+      const chunks = new Map()
+      let lastYieldTime = Date.now()
+      
+      // Stream transactions and process in batches as they arrive
+      await rpcClient.value.streamTransactionsParallel(
         cartridgeAddress.value,
         500,
-        async (progressInfo) => {
-          // Update progress during fetch
-          progress.value.txPagesFetched = progressInfo.page
-          progress.value.txTotalFetched = progressInfo.totalFetched
-          // Estimate total pages based on current rate (if we got a full page, estimate more)
-          if (progressInfo.pageSize === 500 && progressInfo.page <= 3) {
-            // After 3 pages, estimate based on pattern
-            progress.value.txEstimatedPages = Math.max(progressInfo.page + 10, progressInfo.page * 2)
-          } else if (progressInfo.pageSize < 500) {
-            // Last page, we know the total
-            progress.value.txEstimatedPages = progressInfo.page
-          } else {
-            // Keep increasing estimate
-            progress.value.txEstimatedPages = Math.max(progress.value.txEstimatedPages, progressInfo.page + 5)
-          }
-          console.log(`Fetching transactions: page ${progressInfo.page}, ${progressInfo.totalFetched} transactions`)
-          // Yield to UI to show updates
-          await new Promise(resolve => setTimeout(resolve, 0))
-        }
-      )
-      
-      // Set final values
-      progress.value.txPagesFetched = Math.ceil(allTxs.length / 500)
-      progress.value.txEstimatedPages = progress.value.txPagesFetched
-      
-      progress.value.phase = 'parsing-chunks'
-      // Don't show status message - progress bars show it
-      progress.value.statusMessage = ''
-      
-      const filteredTxs = allTxs.filter(tx => {
-        if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
-          return false
-        }
-        return true
-      })
-      
-      console.log(`Using ${filteredTxs.length} transactions from publisher`)
-
-      // Collect DATA chunks with incremental progress updates
-      const chunks = new Map()
-      let processedCount = 0
-      const totalTxs = filteredTxs.length
-      
-      for (const tx of filteredTxs) {
-        const txData = tx.recipientData || tx.data || ''
-        if (!txData) {
-          processedCount++
-          continue
-        }
-
-        try {
-          const data = hexToBytes(txData)
-          const dataChunk = parseDATA(data)
+        async (batchTxs, info) => {
+          // Update fetch progress
+          progress.value.txPagesFetched = info.page
+          progress.value.txTotalFetched = info.totalFetched
+          progress.value.txEstimatedPages = Math.max(progress.value.txEstimatedPages, info.page + 2)
           
-          if (dataChunk && dataChunk.cartridgeId === cartData.cartridgeId) {
-            // Only keep the first occurrence of each chunk index (in case of duplicates)
-            if (!chunks.has(dataChunk.chunkIndex)) {
-              chunks.set(dataChunk.chunkIndex, {
-                ...dataChunk,
-                txHash: tx.hash
-              })
-              // Update progress incrementally
-              progress.value.chunksFound = chunks.size
+          // Process batch immediately (parse while fetching continues)
+          let batchChunksFound = 0
+          
+          for (const tx of batchTxs) {
+            // Filter by publisher if specified
+            if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
+              continue
+            }
+            
+            const txData = tx.recipientData || tx.data || ''
+            if (!txData) continue
+            
+            // OPTIMIZATION: Quick magic byte check - skip non-DATA transactions without full parsing
+            if (!isDataMagicHex(txData)) {
+              continue
+            }
+
+            try {
+              const data = hexToBytes(txData)
+              const dataChunk = parseDATA(data)
               
-              // Update rate periodically
-              const elapsed = (Date.now() - syncStartTime.value) / 1000
-              if (elapsed > 0) {
-                progress.value.rate = chunks.size / elapsed
+              if (dataChunk && dataChunk.cartridgeId === cartData.cartridgeId) {
+                // Only keep the first occurrence of each chunk index (in case of duplicates)
+                if (!chunks.has(dataChunk.chunkIndex)) {
+                  chunks.set(dataChunk.chunkIndex, {
+                    ...dataChunk,
+                    txHash: tx.hash
+                  })
+                  batchChunksFound++
+                }
               }
+            } catch (err) {
+              // Not a valid DATA chunk, continue
             }
           }
-        } catch (err) {
-          // Not a DATA chunk, continue
-        }
-        
-        processedCount++
-        // Update progress every 10 transactions to avoid too many UI updates
-        if (processedCount % 10 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0)) // Yield to UI
-        }
-      }
-
-      progress.value.chunksFound = chunks.size
-      progress.value.phase = 'reconstructing'
-      // Don't show status message for parsing/reconstructing - progress bars show it
+          
+          // Update progress after each batch
+          progress.value.chunksFound = chunks.size
+          progress.value.phase = chunks.size >= expectedChunks ? 'reconstructing' : 'fetching-txs'
+          
+          // Update rate
+          const elapsed = (Date.now() - syncStartTime.value) / 1000
+          if (elapsed > 0) {
+            progress.value.rate = chunks.size / elapsed
+          }
+          
+          // Yield to UI after each batch to ensure progress bar updates
+          // (needed for reactivity to trigger re-render)
+          await new Promise(resolve => setTimeout(resolve, 0))
+          
+          // Early exit if we have all chunks
+          if (chunks.size >= expectedChunks) {
+            console.log(`Found all ${expectedChunks} chunks, stopping stream early`)
+            return false // Signal to stop streaming (if supported)
+          }
+        },
+        { concurrency: 6, maxPages: 200 }
+      )
+      
+      // Final progress update
+      progress.value.txEstimatedPages = progress.value.txPagesFetched
+      progress.value.phase = 'parsing-chunks'
       progress.value.statusMessage = ''
-      console.log(`Found ${chunks.size} of ${expectedChunks} expected chunks`)
+      
+      console.log(`Streaming complete: Found ${chunks.size} of ${expectedChunks} expected chunks`)
 
       if (chunks.size < expectedChunks) {
         error.value = `Only found ${chunks.size} of ${expectedChunks} expected chunks. Some transactions may not be confirmed yet.`
@@ -481,6 +471,7 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       }
 
       // Reconstruct file with incremental progress updates
+      progress.value.phase = 'reconstructing'
       const sortedChunks = Array.from(chunks.values())
         .sort((a, b) => a.chunkIndex - b.chunkIndex)
 
@@ -488,6 +479,7 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       let offset = 0
       let totalBytes = 0
 
+      // OPTIMIZATION: Reduced UI yield frequency (every 500 chunks instead of 50)
       for (let i = 0; i < sortedChunks.length; i++) {
         const chunk = sortedChunks[i]
         const chunkData = chunk.data.slice(0, chunk.len)
@@ -498,8 +490,8 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
         // Update progress incrementally during reconstruction
         progress.value.bytes = totalBytes
         
-        // Update every 50 chunks to avoid too many UI updates
-        if (i % 50 === 0) {
+        // OPTIMIZATION: Update every 500 chunks to avoid too many UI updates
+        if (i % 500 === 0) {
           await new Promise(resolve => setTimeout(resolve, 0)) // Yield to UI
         }
       }

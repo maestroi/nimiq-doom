@@ -229,4 +229,80 @@ export class NimiqRPC {
     console.log(`getAllTransactionsByAddress complete: ${allTransactions.length} total transactions in ${page + 1} pages`)
     return allTransactions
   }
+
+  /**
+   * OPTIMIZED: High-throughput streaming with per-page callbacks
+   * Fetches pages sequentially (required for pagination) but calls onBatch after each page
+   * for smooth progress updates
+   * 
+   * @param {string} address - Nimiq address
+   * @param {number} max - Page size
+   * @param {function} onBatch - Callback for each page of transactions
+   * @param {object} options - Options { maxPages: 200 }
+   */
+  async streamTransactionsParallel(address, max = 500, onBatch, options = {}) {
+    const { maxPages = 200 } = options
+    const seenHashes = new Set()
+    let totalFetched = 0
+    let pagesCompleted = 0
+    
+    console.log(`[Stream] Starting page-by-page streaming`)
+    const startTime = Date.now()
+    
+    let currentStartAt = null
+    let done = false
+    let shouldStop = false
+    
+    while (!done && !shouldStop && pagesCompleted < maxPages) {
+      const txs = await this.getTransactionsByAddress(address, max, currentStartAt)
+      
+      if (txs.length === 0) {
+        done = true
+        break
+      }
+      
+      // Deduplicate
+      const newTxs = txs.filter(tx => !seenHashes.has(tx.hash))
+      for (const tx of newTxs) seenHashes.add(tx.hash)
+      
+      pagesCompleted++
+      
+      if (newTxs.length > 0) {
+        totalFetched += newTxs.length
+        
+        // Call onBatch after each page for smooth progress updates
+        if (onBatch) {
+          const result = onBatch(newTxs, {
+            page: pagesCompleted,
+            totalFetched,
+            rate: totalFetched / ((Date.now() - startTime) / 1000)
+          })
+          
+          // Handle async callback
+          if (result && typeof result.then === 'function') {
+            const callbackResult = await result
+            // Allow callback to signal early stop
+            if (callbackResult === false) {
+              shouldStop = true
+            }
+          } else if (result === false) {
+            shouldStop = true
+          }
+        }
+      }
+      
+      // Update pagination cursor
+      currentStartAt = txs[txs.length - 1]?.hash
+      
+      // Check if this is the last page
+      if (txs.length < max) {
+        done = true
+      }
+    }
+    
+    const elapsed = (Date.now() - startTime) / 1000
+    console.log(`[Stream] Complete: ${totalFetched} transactions in ${pagesCompleted} pages (${elapsed.toFixed(2)}s, ${(totalFetched/elapsed).toFixed(0)} tx/s)`)
+    
+    return { totalFetched, pages: pagesCompleted }
+  }
 }

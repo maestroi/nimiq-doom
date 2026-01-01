@@ -285,47 +285,44 @@ const platformName = computed(() => {
          platformCode === 2 ? 'GBC' : `Platform ${platformCode}`
 })
 
-// Combined progress that accounts for all three phases:
-// 1. Fetching transactions (0-15%)
-// 2. Parsing chunks (15-40%)
-// 3. Reconstructing bytes (40-100%)
+// Combined progress that accounts for streaming (fetch + parse happen simultaneously)
+// With streaming optimization:
+// - Chunk progress is the PRIMARY indicator (0-90%)
+// - Reconstruction/verification is the final phase (90-100%)
 const combinedProgress = computed(() => {
   if (!props.syncProgress) return 0
   
   const progress = props.syncProgress
-  let totalProgress = 0
   
-  // Phase 1: Transaction fetching (0-15% of total)
+  // If we have expected chunks, use chunk progress as the primary indicator
+  if (progress.expectedChunks > 0) {
+    const chunkProgress = Math.min(1, progress.chunksFound / progress.expectedChunks)
+    
+    // Chunks done - now reconstruction/verification (90-100%)
+    if (progress.chunksFound >= progress.expectedChunks) {
+      if (props.cartHeader && props.cartHeader.totalSize > 0 && progress.bytes > 0) {
+        const byteProgress = Math.min(1, progress.bytes / props.cartHeader.totalSize)
+        return 90 + (byteProgress * 10) // 90% base + up to 10% for reconstruction
+      }
+      // Chunks done, waiting for reconstruction
+      return 90
+    }
+    
+    // Still fetching/parsing chunks (0-90%)
+    return chunkProgress * 90
+  }
+  
+  // Fallback: only tx progress available (early phase)
   if (progress.txEstimatedPages > 0) {
     const txProgress = Math.min(1, progress.txPagesFetched / progress.txEstimatedPages)
-    totalProgress = txProgress * 15
-  } else if (progress.phase === 'fetching-txs') {
-    totalProgress = 5 // Show some progress while fetching
+    return txProgress * 10 // Only show up to 10% for tx fetching alone
   }
   
-  // Phase 2: Parsing chunks (15-40% of total, so 25% range)
-  // Only start chunk phase if tx is done or we have expected chunks
-  if (progress.expectedChunks > 0) {
-    // If tx is done (or we're past fetching), start from 15%
-    if (progress.txEstimatedPages === 0 || progress.txPagesFetched >= progress.txEstimatedPages || progress.phase !== 'fetching-txs') {
-      const chunkProgress = Math.min(1, progress.chunksFound / progress.expectedChunks)
-      totalProgress = 15 + (chunkProgress * 25) // 15% base + up to 25% more
-    }
+  if (progress.phase === 'fetching-txs') {
+    return 5 // Show some progress while fetching
   }
   
-  // Phase 3: Reconstructing bytes (40-100% of total, so 60% range)
-  // Only start byte phase if chunks are done
-  if (progress.expectedChunks > 0 && progress.chunksFound >= progress.expectedChunks) {
-    if (props.cartHeader && props.cartHeader.totalSize > 0) {
-      const byteProgress = Math.min(1, progress.bytes / props.cartHeader.totalSize)
-      totalProgress = 40 + (byteProgress * 60) // 40% base (after tx + chunks) + up to 60% more
-    } else {
-      // Chunks done but bytes not started yet
-      totalProgress = 40
-    }
-  }
-  
-  return Math.min(100, Math.max(0, totalProgress))
+  return 0
 })
 </script>
 

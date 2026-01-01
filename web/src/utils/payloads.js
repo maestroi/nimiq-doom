@@ -262,3 +262,23 @@ export function hexToBytes(hexString) {
   return data
 }
 
+/**
+ * OPTIMIZATION: Quick check if hex data starts with DATA magic
+ * Avoids full hexToBytes conversion for non-DATA transactions
+ * "DATA" in hex = "44415441"
+ */
+export function isDataMagicHex(hexString) {
+  const hex = hexString.startsWith('0x') ? hexString.slice(2) : hexString
+  // Check first 8 hex chars (4 bytes) for "DATA" magic = 0x44415441
+  return hex.length >= 8 && hex.slice(0, 8).toUpperCase() === '44415441'
+}
+
+/**
+ * OPTIMIZATION: Quick check if hex data starts with CART magic
+ * "CART" in hex = "43415254"
+ */
+export function isCartMagicHex(hexString) {
+  const hex = hexString.startsWith('0x') ? hexString.slice(2) : hexString
+  return hex.length >= 8 && hex.slice(0, 8).toUpperCase() === '43415254'
+}
+
