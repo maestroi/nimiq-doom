@@ -7,7 +7,10 @@
       <div class="space-y-4">
         <!-- Game Selection -->
         <div>
-          <label class="block text-sm font-medium text-gray-300 mb-2">Game</label>
+          <label class="block text-sm font-medium text-gray-300 mb-2">
+            Game
+            <span v-if="selectedGame" class="ml-2 text-xs text-gray-500 font-normal">(ID: {{ selectedGame.appId }})</span>
+          </label>
           <select
             :value="selectedGame ? selectedGame.appId : ''"
             @change="onGameSelect($event.target.value)"

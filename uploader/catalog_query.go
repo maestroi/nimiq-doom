@@ -26,15 +26,12 @@ func getMapKeys(m map[string]interface{}) []string {
 func GetMaxAppID(rpc *NimiqRPC, catalogAddr, publisherAddr string) (uint32, error) {
 	// Normalize catalog address (remove spaces) for RPC call
 	normalizedCatalogAddr := normalizeAddress(catalogAddr)
-	fmt.Printf("Querying catalog address: %s (normalized: %s)\n", catalogAddr, normalizedCatalogAddr)
 
 	// Query all transactions from catalog address
 	transactions, err := GetAllTransactionsByAddress(rpc, normalizedCatalogAddr, 500)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query catalog: %w", err)
 	}
-
-	fmt.Printf("Found %d total transactions in catalog\n", len(transactions))
 
 	maxAppID := uint32(0)
 	centCount := 0
@@ -76,8 +73,6 @@ func GetMaxAppID(rpc *NimiqRPC, catalogAddr, publisherAddr string) (uint32, erro
 			maxAppID = appID
 		}
 	}
-
-	fmt.Printf("Parsed %d CENT entries, max app-id: %d\n", centCount, maxAppID)
 
 	// Return next app-id (max + 1, or 1 if none found)
 	if maxAppID == 0 {
@@ -302,23 +297,9 @@ func GetAllTransactionsByAddress(rpc *NimiqRPC, address string, maxPerPage int) 
 			params["startAt"] = startAt
 		}
 
-		// Debug: log what we're sending (first call only)
-		if startAt == "" {
-			fmt.Printf("Calling RPC getTransactionsByAddress with address: %s, max: %d\n", normalizedAddr, maxPerPage)
-		}
-
 		result, err := rpc.Call("getTransactionsByAddress", params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to call getTransactionsByAddress: %w", err)
-		}
-
-		// Debug: log raw response (first call only)
-		if startAt == "" {
-			responsePreview := string(result)
-			if len(responsePreview) > 500 {
-				responsePreview = responsePreview[:500] + "..."
-			}
-			fmt.Printf("RPC response preview: %s\n", responsePreview)
 		}
 
 		// Parse response - RPC returns {"data": [...]} format

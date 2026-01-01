@@ -9,3 +9,4 @@ node_modules/
 dist/
 *.log
 uploader/account_credentials.txt
+upload_cartridge_*.json

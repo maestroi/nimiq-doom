@@ -30,7 +30,7 @@
             />
           </div>
           <!-- Catalog Selection -->
-          <div v-if="catalogs && catalogs.length > 0" class="flex items-center gap-2">
+          <div v-if="catalogs && catalogs.length > 0" class="flex items-center gap-2 flex-wrap">
             <label class="text-xs font-medium text-gray-400 whitespace-nowrap">Catalog:</label>
             <select
               :value="selectedCatalogName"
@@ -41,9 +41,18 @@
                 {{ catalog.name }}
               </option>
             </select>
+            <input
+              v-if="selectedCatalogName === 'Custom...'"
+              :value="customCatalogAddress"
+              @input="$emit('update:custom-catalog', $event.target.value)"
+              @keyup.enter="$emit('update:custom-catalog', $event.target.value)"
+              placeholder="Enter catalog address (e.g., NQ32 0VD4...)"
+              type="text"
+              class="text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-1.5 min-w-[300px] flex-1"
+            />
           </div>
           <!-- Refresh Catalog Button -->
-          <div v-if="games && games.length > 0" class="flex items-center">
+          <div v-if="catalogAddress" class="flex items-center">
             <button
               @click="$emit('refresh-catalog')"
               :disabled="loading"
@@ -59,9 +68,6 @@
               </svg>
               Refresh
             </button>
-          </div>
-          <div v-else-if="catalogAddress" class="text-xs text-gray-400">
-            Catalog: {{ catalogAddress.slice(0, 10) }}...
           </div>
         </div>
       </div>
@@ -83,6 +89,7 @@ const props = defineProps({
   catalogs: Array,
   selectedCatalogName: String,
   catalogAddress: String,
+  customCatalogAddress: String,
   publisherAddress: String
 })
 
@@ -90,6 +97,7 @@ const emit = defineEmits([
   'update:rpc-endpoint',
   'update:custom-rpc',
   'update:catalog',
+  'update:custom-catalog',
   'update:game',
   'update:version',
   'refresh-catalog'

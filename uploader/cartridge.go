@@ -152,22 +152,24 @@ func EncodeCENT(entry CENTEntry) ([]byte, error) {
 const nimiqBase32Alphabet = "0123456789ABCDEFGHJKLMNPQRSTUVXY"
 
 // AddressNQToBytes converts a Nimiq address string (NQ...) to 20-byte binary
-// Nimiq addresses are base32 encoded: NQ + 34 base32 chars
-// We decode all 34 chars (170 bits) and take the first 20 bytes (160 bits)
-// The remaining bits contain a checksum that we discard
+// Nimiq address format is IBAN-style:
+// - NQ (2 chars) + check digits (2 chars) + address body (32 base32 chars)
+// - The check digits are MOD-97-10 calculated over the address body
+// - We skip the check digits and decode only the 32-char address body
 func AddressNQToBytes(address string) ([20]byte, error) {
 	var result [20]byte
 
 	// Remove spaces (Nimiq addresses are often formatted with spaces)
 	address = strings.ReplaceAll(address, " ", "")
 
-	if len(address) < 2 || address[:2] != "NQ" {
-		return result, fmt.Errorf("invalid address format: must start with NQ")
+	if len(address) != 36 || address[:2] != "NQ" {
+		return result, fmt.Errorf("invalid address format: expected NQ + 34 chars, got %d chars", len(address))
 	}
 
-	base32Str := strings.ToUpper(address[2:])
-	if len(base32Str) != 34 {
-		return result, fmt.Errorf("invalid address length: expected 34 base32 chars after NQ, got %d", len(base32Str))
+	// Skip NQ (2 chars) and check digits (2 chars), decode only the 32-char address body
+	base32Str := strings.ToUpper(address[4:]) // Skip "NQ" + check digits
+	if len(base32Str) != 32 {
+		return result, fmt.Errorf("invalid address body length: expected 32 base32 chars, got %d", len(base32Str))
 	}
 
 	// Build a lookup map for the base32 alphabet
@@ -176,13 +178,12 @@ func AddressNQToBytes(address string) ([20]byte, error) {
 		alphabetMap[byte(c)] = i
 	}
 
-	// Decode all 34 base32 characters = 170 bits = ~21.25 bytes
-	// We take the first 20 bytes as the address
-	decoded := make([]byte, 0, 22)
+	// Decode 32 base32 characters = 160 bits = exactly 20 bytes
+	decoded := make([]byte, 0, 20)
 	bitBuffer := uint64(0)
 	bitsInBuffer := 0
 
-	for i := 0; i < 34; i++ {
+	for i := 0; i < 32; i++ {
 		char := base32Str[i]
 		value, ok := alphabetMap[char]
 		if !ok {
@@ -199,12 +200,11 @@ func AddressNQToBytes(address string) ([20]byte, error) {
 		}
 	}
 
-	// Take the first 20 bytes (the address, remaining bytes are checksum)
-	if len(decoded) < 20 {
-		return result, fmt.Errorf("decoded address too short: got %d bytes, expected at least 20", len(decoded))
+	if len(decoded) != 20 {
+		return result, fmt.Errorf("decoded address wrong size: got %d bytes, expected 20", len(decoded))
 	}
 
-	copy(result[:], decoded[:20])
+	copy(result[:], decoded)
 	return result, nil
 }
 

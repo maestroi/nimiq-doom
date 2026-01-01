@@ -12,10 +12,12 @@
       :catalogs="catalogs"
       :selected-catalog-name="selectedCatalogName"
       :catalog-address="catalogAddress"
+      :custom-catalog-address="customCatalogAddress"
       :publisher-address="publisherAddress"
       @update:rpc-endpoint="onRpcEndpointChange"
       @update:custom-rpc="onCustomRpcEndpointChange"
       @update:catalog="onCatalogChange"
+      @update:custom-catalog="onCustomCatalogChange"
       @update:game="onGameChange"
       @update:version="onVersionChange"
       @refresh-catalog="loadCatalog"
@@ -251,10 +253,15 @@ const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
 // Configuration - Multiple catalogs
 const catalogs = ref([
   { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0' },
-  { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' }
+  { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' },
+  { name: 'Custom...', address: 'custom' }
 ])
 const selectedCatalogName = ref('Test')
+const customCatalogAddress = ref('')
 const catalogAddress = computed(() => {
+  if (selectedCatalogName.value === 'Custom...') {
+    return customCatalogAddress.value || null
+  }
   const catalog = catalogs.value.find(c => c.name === selectedCatalogName.value)
   return catalog ? catalog.address : catalogs.value[0].address
 })
@@ -333,8 +340,24 @@ function onCatalogChange(catalogName) {
   fileData.value = null
   verified.value = false
   runJson.value = null
-  // Reload catalog with new address
-  loadCatalog()
+  // Reload catalog with new address (only if not custom or if custom address is set)
+  if (catalogName !== 'Custom...' || customCatalogAddress.value) {
+    loadCatalog()
+  }
+}
+
+// Handle custom catalog address change
+function onCustomCatalogChange(address) {
+  customCatalogAddress.value = address
+  // Reset game selection and reload catalog if address is set
+  selectedGame.value = null
+  selectedVersion.value = null
+  fileData.value = null
+  verified.value = false
+  runJson.value = null
+  if (address) {
+    loadCatalog()
+  }
 }
 
 // Handle version selection

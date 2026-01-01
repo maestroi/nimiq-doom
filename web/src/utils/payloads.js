@@ -144,12 +144,12 @@ const NIMIQ_BASE32_ALPHABET = '0123456789ABCDEFGHJKLMNPQRSTUVXY'
 
 /**
  * Calculate IBAN-style MOD-97 check digits for Nimiq address
- * @param {string} addressBase32 - 32 character base32 encoded address
- * @returns {string} 2-digit check string (e.g., "34")
+ * @param {string} addressBase32 - 32 character base32 encoded address body
+ * @returns {string} 2-digit check string (e.g., "29", "34")
  */
-function calculateMod97Check(addressBase32) {
+function calculateIBANCheck(addressBase32) {
   // IBAN MOD-97-10 algorithm:
-  // 1. Rearrange: address + "NQ00" (country code + placeholder check)
+  // 1. Rearrange: address_body + "NQ00" (NQ + placeholder 00)
   // 2. Convert letters to numbers: A=10, B=11, ..., Z=35
   // 3. Calculate: 98 - (number mod 97)
   
@@ -166,13 +166,13 @@ function calculateMod97Check(addressBase32) {
     }
   }
   
-  // Calculate mod 97 of the large number (process in chunks to avoid overflow)
+  // Calculate mod 97 of the large number (process digit by digit to avoid overflow)
   let remainder = 0
   for (let i = 0; i < numericString.length; i++) {
     remainder = (remainder * 10 + parseInt(numericString[i])) % 97
   }
   
-  // Check digits = 98 - remainder
+  // Check digits = 98 - remainder, padded to 2 digits
   const check = 98 - remainder
   return check.toString().padStart(2, '0')
 }
@@ -180,11 +180,10 @@ function calculateMod97Check(addressBase32) {
 /**
  * Convert 20-byte binary address to Nimiq address string (NQ...)
  * 
- * Nimiq address format (IBAN-style):
- * - NQ = prefix (2 chars)
- * - Check digits (2 chars, MOD-97-10 algorithm)
- * - Address body (32 base32 chars = 160 bits = 20 bytes)
+ * Nimiq address format is IBAN-style:
+ * - NQ (2 chars) + check digits (2 chars) + address body (32 base32 chars)
  * - Total: 36 characters
+ * - Check digits calculated via MOD-97-10 over address body
  */
 export function addressBytesToNQ(addressBytes) {
   if (!addressBytes || addressBytes.length !== 20) {
@@ -214,9 +213,9 @@ export function addressBytesToNQ(addressBytes) {
   }
   
   // Step 2: Calculate IBAN-style MOD-97 check digits
-  const checkDigits = calculateMod97Check(addressBase32)
+  const checkDigits = calculateIBANCheck(addressBase32)
   
-  // Step 3: Format as NQ + check_digits + address_base32
+  // Step 3: Format as NQ + check_digits + address_body
   return 'NQ' + checkDigits + addressBase32
 }
 
