@@ -197,6 +197,7 @@
             :games="catalogGames"
             :selected-game="selectedGame"
             :selected-version="selectedVersion"
+            :selected-platform="selectedPlatform"
             :cart-header="cartHeader"
             :run-json="runJson"
             :sync-progress="cartridgeProgress"
@@ -205,6 +206,7 @@
             :loading="loading"
             :error="error"
             :progress-percent="cartridgeProgressPercent"
+            @update:platform="onPlatformChange"
             @update:game="onGameChange"
             @update:version="onVersionChange"
             @load-cartridge="loadCartridge"
@@ -271,6 +273,7 @@ const publisherAddress = ref('NQ89 4GDH 0J4U C2FY TU0Y TP1X J1H7 3HX3 PVSE') // 
 const developerMode = ref(false)
 
 // Catalog and Cartridge
+const selectedPlatform = ref(null)
 const selectedGame = ref(null)
 const selectedVersion = ref(null)
 
@@ -317,6 +320,25 @@ watch([fileData, verified], async ([newFileData, newVerified]) => {
 const loading = computed(() => catalogLoading.value || cartridgeLoading.value)
 const error = computed(() => catalogError.value || cartridgeError.value)
 
+// Handle platform selection
+function onPlatformChange(platform) {
+  selectedPlatform.value = platform
+  // Reset game selection when platform changes
+  selectedGame.value = null
+  selectedVersion.value = null
+  fileData.value = null
+  verified.value = false
+  runJson.value = null
+  
+  // Auto-select first game if platform is selected
+  if (platform && catalogGames.value && catalogGames.value.length > 0) {
+    const filteredGames = catalogGames.value.filter(game => game.platform === platform)
+    if (filteredGames.length > 0) {
+      onGameChange(filteredGames[0])
+    }
+  }
+}
+
 // Handle game selection
 function onGameChange(game) {
   selectedGame.value = game
@@ -334,7 +356,8 @@ function onGameChange(game) {
 // Handle catalog selection
 function onCatalogChange(catalogName) {
   selectedCatalogName.value = catalogName
-  // Reset game selection and reload catalog
+  // Reset platform, game selection and reload catalog
+  selectedPlatform.value = null
   selectedGame.value = null
   selectedVersion.value = null
   fileData.value = null
@@ -372,7 +395,8 @@ function onVersionChange(version) {
 // Watch for catalog address changes to reload catalog
 watch(catalogAddress, async (newAddress) => {
   if (newAddress) {
-    // Reset selection and reload catalog
+    // Reset platform, selection and reload catalog
+    selectedPlatform.value = null
     selectedGame.value = null
     selectedVersion.value = null
     fileData.value = null
@@ -381,6 +405,22 @@ watch(catalogAddress, async (newAddress) => {
     await loadCatalog()
   }
 }, { immediate: false })
+
+// Auto-select first platform when games are loaded
+watch(catalogGames, (newGames) => {
+  if (newGames && newGames.length > 0 && !selectedPlatform.value) {
+    // Get unique platforms
+    const platforms = [...new Set(newGames.map(g => g.platform).filter(Boolean))].sort()
+    if (platforms.length > 0) {
+      selectedPlatform.value = platforms[0]
+      // Auto-select first game for that platform
+      const filteredGames = newGames.filter(game => game.platform === platforms[0])
+      if (filteredGames.length > 0) {
+        onGameChange(filteredGames[0])
+      }
+    }
+  }
+}, { immediate: true })
 
 // Watch for version changes to load cartridge info only (no download)
 watch(selectedVersion, async (newVersion) => {

@@ -189,11 +189,15 @@ export class NimiqRPC {
       
       // Update progress callback if provided
       if (onProgress) {
-        onProgress({
+        const result = onProgress({
           page: page + 1,
           totalFetched: allTransactions.length,
           pageSize: newTransactions.length
         })
+        // If callback returns a promise, wait for it (allows UI updates)
+        if (result && typeof result.then === 'function') {
+          await result
+        }
       }
       
       // Use the oldest transaction hash (last in descending list) as next startAt

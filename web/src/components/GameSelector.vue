@@ -5,8 +5,23 @@
     </div>
     <div class="px-4 py-5 sm:p-6">
       <div class="space-y-4">
+        <!-- Platform Selection -->
+        <div v-if="availablePlatforms.length > 0">
+          <label class="block text-sm font-medium text-gray-300 mb-2">Platform</label>
+          <select
+            :value="selectedPlatform || ''"
+            @change="onPlatformSelect($event.target.value)"
+            class="w-full text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+          >
+            <option value="">-- Select Platform --</option>
+            <option v-for="platform in availablePlatforms" :key="platform" :value="platform">
+              {{ platform }}
+            </option>
+          </select>
+        </div>
+        
         <!-- Game Selection -->
-        <div>
+        <div v-if="selectedPlatform || availablePlatforms.length === 0">
           <label class="block text-sm font-medium text-gray-300 mb-2">
             Game
             <span v-if="selectedGame" class="ml-2 text-xs text-gray-500 font-normal">(ID: {{ selectedGame.appId }})</span>
@@ -17,8 +32,8 @@
             class="w-full text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
           >
             <option value="">-- Select Game --</option>
-            <option v-for="game in games" :key="game.appId" :value="game.appId">
-              {{ game.title }} ({{ game.platform }})
+            <option v-for="game in filteredGames" :key="game.appId" :value="game.appId">
+              {{ game.title }}
             </option>
           </select>
         </div>
@@ -56,16 +71,59 @@
             </div>
             <div v-if="cartHeader">
               <dt class="text-xs font-medium text-gray-400">SHA256</dt>
-              <dd class="mt-0.5 text-xs text-white font-mono break-words">{{ formatHash(cartHeader.sha256) }}</dd>
+              <dd class="mt-0.5 text-xs text-white font-mono break-words flex items-center gap-2">
+                <span>{{ formatHash(cartHeader.sha256) }}</span>
+                <span v-if="verified" class="inline-flex items-center text-green-400" title="SHA256 verified">
+                  <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                </span>
+              </dd>
+            </div>
+            <div v-if="cartHeader && cartHeader.publisherVerified !== undefined">
+              <dt class="text-xs font-medium text-gray-400">Publisher</dt>
+              <dd class="mt-0.5 text-xs text-white flex items-center gap-2">
+                <span v-if="cartHeader.publisherVerified" class="inline-flex items-center text-green-400">
+                  <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                  Verified
+                </span>
+                <span v-else class="inline-flex items-center text-yellow-400">
+                  <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                  Not verified
+                </span>
+              </dd>
             </div>
           </dl>
         </div>
 
         <!-- Download Progress -->
-        <div v-if="syncProgress && syncProgress.expectedChunks > 0" class="pt-4 border-t border-gray-700 dark:border-white/10">
+        <div v-if="(loading || verified) && selectedVersion && syncProgress && (syncProgress.expectedChunks > 0 || syncProgress.txPagesFetched > 0)" class="pt-4 border-t border-gray-700 dark:border-white/10">
           <h3 class="text-sm font-semibold text-white mb-2">Download Progress</h3>
-          <div class="space-y-2">
-            <div>
+          
+          <div v-if="syncProgress && (syncProgress.expectedChunks > 0 || syncProgress.txPagesFetched > 0)" class="space-y-2">
+            <!-- Transaction Fetching Progress -->
+            <div v-if="syncProgress.txEstimatedPages > 0 || syncProgress.txPagesFetched > 0">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-400">Fetching Transactions</span>
+                <span class="text-white font-medium">
+                  <span v-if="syncProgress.txPagesFetched > 0">Page {{ syncProgress.txPagesFetched }}</span>
+                  <span v-if="syncProgress.txEstimatedPages > 0"> / {{ syncProgress.txEstimatedPages }}</span>
+                  <span v-if="syncProgress.txTotalFetched > 0"> ({{ syncProgress.txTotalFetched.toLocaleString() }} tx)</span>
+                  <span v-else-if="syncProgress.phase === 'fetching-txs'">...</span>
+                </span>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden relative">
+                <div
+                  class="bg-blue-600 h-full rounded-full transition-all duration-300 absolute left-0 top-0"
+                  :style="{ width: syncProgress.txEstimatedPages > 0 ? `${Math.min(100, Math.max(0, (syncProgress.txPagesFetched / syncProgress.txEstimatedPages * 100)))}%` : (syncProgress.phase === 'fetching-txs' ? '10%' : '100%') }"
+                ></div>
+              </div>
+            </div>
+            <div v-if="syncProgress.expectedChunks > 0">
               <div class="flex justify-between text-xs mb-1">
                 <span class="text-gray-400">Chunks</span>
                 <span class="text-white font-medium">{{ syncProgress.chunksFound.toLocaleString() }} / {{ syncProgress.expectedChunks.toLocaleString() }}</span>
@@ -91,7 +149,7 @@
               </div>
             </div>
             <div class="text-center pt-1">
-              <span class="text-lg font-bold text-white">{{ Math.round(progressPercent) }}%</span>
+              <span class="text-lg font-bold text-white">{{ Math.round(combinedProgress) }}%</span>
               <span class="text-xs text-gray-400 ml-1">Complete</span>
             </div>
             <div v-if="syncProgress.rate > 0" class="text-center pt-1">
@@ -99,20 +157,17 @@
               <span class="text-xs text-white font-medium">{{ syncProgress.rate.toFixed(1) }} chunks/s</span>
             </div>
           </div>
-        </div>
-
-        <!-- File Verification -->
-        <div v-if="verified && !error" class="pt-3 border-t border-gray-700 dark:border-white/10">
-          <div class="flex items-center">
-            <svg class="h-4 w-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-            <div>
-              <div class="text-xs font-medium text-green-200">File Verified</div>
-              <div class="text-xs text-green-300">SHA256 verified</div>
+          <div v-else class="space-y-2">
+            <div class="flex items-center justify-center py-4">
+              <svg class="animate-spin h-5 w-5 text-indigo-400 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span class="text-sm text-gray-300">{{ syncProgress?.statusMessage || 'Loading cartridge information...' }}</span>
             </div>
           </div>
         </div>
+
       </div>
     </div>
     
@@ -167,6 +222,7 @@ const props = defineProps({
   games: Array,
   selectedGame: Object,
   selectedVersion: Object,
+  selectedPlatform: String,
   cartHeader: Object,
   runJson: Object,
   syncProgress: Object,
@@ -177,10 +233,33 @@ const props = defineProps({
   progressPercent: Number
 })
 
-const emit = defineEmits(['update:game', 'update:version', 'load-cartridge', 'clear-cache'])
+const emit = defineEmits(['update:platform', 'update:game', 'update:version', 'load-cartridge', 'clear-cache'])
+
+// Compute available platforms (only platforms that have games)
+const availablePlatforms = computed(() => {
+  if (!props.games || props.games.length === 0) return []
+  const platforms = new Set()
+  props.games.forEach(game => {
+    if (game.platform) {
+      platforms.add(game.platform)
+    }
+  })
+  return Array.from(platforms).sort()
+})
+
+// Filter games by selected platform
+const filteredGames = computed(() => {
+  if (!props.games || props.games.length === 0) return []
+  if (!props.selectedPlatform) return props.games
+  return props.games.filter(game => game.platform === props.selectedPlatform)
+})
+
+function onPlatformSelect(platform) {
+  emit('update:platform', platform || null)
+}
 
 function onGameSelect(appId) {
-  const game = props.games?.find(g => g.appId === Number(appId))
+  const game = filteredGames.value?.find(g => g.appId === Number(appId))
   emit('update:game', game || null)
 }
 
@@ -197,6 +276,49 @@ const platformName = computed(() => {
   return platformCode === 0 ? 'DOS' : 
          platformCode === 1 ? 'GB' :
          platformCode === 2 ? 'GBC' : `Platform ${platformCode}`
+})
+
+// Combined progress that accounts for all three phases:
+// 1. Fetching transactions (0-15%)
+// 2. Parsing chunks (15-40%)
+// 3. Reconstructing bytes (40-100%)
+const combinedProgress = computed(() => {
+  if (!props.syncProgress) return 0
+  
+  const progress = props.syncProgress
+  let totalProgress = 0
+  
+  // Phase 1: Transaction fetching (0-15% of total)
+  if (progress.txEstimatedPages > 0) {
+    const txProgress = Math.min(1, progress.txPagesFetched / progress.txEstimatedPages)
+    totalProgress = txProgress * 15
+  } else if (progress.phase === 'fetching-txs') {
+    totalProgress = 5 // Show some progress while fetching
+  }
+  
+  // Phase 2: Parsing chunks (15-40% of total, so 25% range)
+  // Only start chunk phase if tx is done or we have expected chunks
+  if (progress.expectedChunks > 0) {
+    // If tx is done (or we're past fetching), start from 15%
+    if (progress.txEstimatedPages === 0 || progress.txPagesFetched >= progress.txEstimatedPages || progress.phase !== 'fetching-txs') {
+      const chunkProgress = Math.min(1, progress.chunksFound / progress.expectedChunks)
+      totalProgress = 15 + (chunkProgress * 25) // 15% base + up to 25% more
+    }
+  }
+  
+  // Phase 3: Reconstructing bytes (40-100% of total, so 60% range)
+  // Only start byte phase if chunks are done
+  if (progress.expectedChunks > 0 && progress.chunksFound >= progress.expectedChunks) {
+    if (props.cartHeader && props.cartHeader.totalSize > 0) {
+      const byteProgress = Math.min(1, progress.bytes / props.cartHeader.totalSize)
+      totalProgress = 40 + (byteProgress * 60) // 40% base (after tx + chunks) + up to 60% more
+    } else {
+      // Chunks done but bytes not started yet
+      totalProgress = 40
+    }
+  }
+  
+  return Math.min(100, Math.max(0, totalProgress))
 })
 </script>
 

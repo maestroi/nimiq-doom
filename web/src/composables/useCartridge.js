@@ -16,7 +16,12 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
     chunksFound: 0,
     expectedChunks: 0,
     bytes: 0,
-    rate: 0
+    rate: 0,
+    phase: 'idle', // 'idle', 'fetching-txs', 'parsing-chunks', 'reconstructing', 'verifying'
+    statusMessage: '',
+    txPagesFetched: 0,
+    txTotalFetched: 0,
+    txEstimatedPages: 0
   })
   const syncStartTime = ref(null)
   
@@ -30,7 +35,47 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
   })
 
   /**
+   * Check cache and load if available (silent, no loading state)
+   */
+  async function checkCacheAndLoad(cartData) {
+    if (!cartData) return false
+    
+    try {
+      const cacheKey = {
+        cartridgeId: cartData.cartridgeId,
+        sha256: cartData.sha256
+      }
+      
+      const cachedData = await cache.loadFromCache(cacheKey)
+      if (cachedData) {
+        // Verify cached data matches expected hash
+        const isValid = await verifySHA256(cachedData, cartData.sha256)
+        if (isValid) {
+          console.log('Loaded from cache silently (found when loading CART header)')
+          fileData.value = cachedData
+          verified.value = true
+          progress.value = {
+            chunksFound: computeExpectedChunks(cartData.totalSize, cartData.chunkSize),
+            expectedChunks: computeExpectedChunks(cartData.totalSize, cartData.chunkSize),
+            bytes: cartData.totalSize,
+            rate: 0
+          }
+          return true
+        } else {
+          console.warn('Cached data failed verification, will need to re-download')
+          await cache.clearCache(cacheKey)
+        }
+      }
+    } catch (err) {
+      console.warn('Error checking cache:', err)
+    }
+    
+    return false
+  }
+
+  /**
    * Load only CART header info (for display, no download)
+   * Optimized to fetch only recent transactions since CART header is uploaded last
    */
   async function loadCartridgeInfo() {
     if (!cartridgeAddress.value || !rpcClient.value) {
@@ -41,32 +86,22 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
     console.log('Loading cartridge info from address:', cartridgeAddress.value)
 
     try {
-      // Fetch ALL transactions - CART header is uploaded first, so it's the oldest transaction
-      // For large games with 1000+ chunks, we need to paginate through all to find the CART header
-      const allTxs = await rpcClient.value.getAllTransactionsByAddress(
+      // CART header is uploaded AFTER all DATA chunks, so it should be in the most recent transactions
+      // Fetch just the first page (most recent transactions) - this should contain the CART header
+      const recentTxs = await rpcClient.value.getTransactionsByAddress(
         cartridgeAddress.value,
-        500, // 500 per page
-        (progress) => {
-          console.log(`Loading cartridge info: page ${progress.page}, ${progress.totalFetched} transactions`)
-        }
+        500 // Just fetch first 500 (most recent)
       )
 
-      console.log(`Found ${allTxs.length} transactions at cartridge address`)
+      console.log(`Checking ${recentTxs.length} most recent transactions for CART header`)
 
-      // Find CART header first (don't filter by publisher - CART header is the most important)
-      // Sort by height (newest first) since CART header is uploaded AFTER all DATA chunks
-      const sortedTxs = [...allTxs].sort((a, b) => (b.height || b.blockNumber || 0) - (a.height || a.blockNumber || 0))
+      // Transactions are already in descending order (newest first) from RPC
+      // So we can check them in order
+      const normalizedPublisher = publisherAddress.value ? normalizeAddress(publisherAddress.value) : null
       
-      let foundCART = false
-      let foundDATA = 0
-      let foundOther = 0
-      
-      for (const tx of sortedTxs) {
+      for (const tx of recentTxs) {
         const txData = tx.recipientData || tx.data || ''
-        if (!txData) {
-          foundOther++
-          continue
-        }
+        if (!txData) continue
 
         try {
           const data = hexToBytes(txData)
@@ -76,38 +111,92 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
           if (magic === 'CART') {
             const cart = parseCART(data)
             if (cart) {
-              foundCART = true
               // Found CART header - verify it's from the publisher if publisher is set
-              const normalizedPublisher = publisherAddress.value ? normalizeAddress(publisherAddress.value) : null
               if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
                 console.warn(`CART header found but not from publisher (from: ${tx.from}, expected: ${publisherAddress.value}), continuing search...`)
                 continue
               }
               
               console.log(`Found CART header: cartridgeId=${cart.cartridgeId}, totalSize=${cart.totalSize}, from=${tx.from}`)
+              const isPublisherVerified = normalizedPublisher ? normalizeAddress(tx.from) === normalizedPublisher : true
               cartHeader.value = {
                 ...cart,
                 txHash: tx.hash,
-                height: tx.height || tx.blockNumber || 0
+                height: tx.height || tx.blockNumber || 0,
+                publisherVerified: isPublisherVerified,
+                fromAddress: tx.from
               }
-              return // Found header, done
+              
+              // Check cache immediately after finding CART header
+              await checkCacheAndLoad(cart)
+              
+              return // Found header, done!
             }
-          } else if (magic === 'DATA') {
-            foundDATA++
-          } else {
-            foundOther++
           }
         } catch (err) {
-          foundOther++
           // Not a valid payload, continue
         }
       }
 
-      console.log(`Transaction breakdown: CART=${foundCART ? 1 : 0}, DATA=${foundDATA}, Other=${foundOther}`)
+      // CART header not found in recent transactions - might be an edge case
+      // Try fetching a few more pages, but limit to avoid fetching everything
+      console.log('CART header not found in most recent transactions, checking a few more pages...')
+      let startAt = recentTxs.length > 0 ? recentTxs[recentTxs.length - 1].hash : null
+      let pagesChecked = 1
+      const maxPages = 5 // Limit to 5 pages max (2500 transactions) to avoid full download
 
-      // No CART header found
+      while (pagesChecked < maxPages && startAt) {
+        const nextPageTxs = await rpcClient.value.getTransactionsByAddress(
+          cartridgeAddress.value,
+          500,
+          startAt
+        )
+
+        if (nextPageTxs.length === 0) break
+
+        for (const tx of nextPageTxs) {
+          const txData = tx.recipientData || tx.data || ''
+          if (!txData) continue
+
+          try {
+            const data = hexToBytes(txData)
+            const magic = String.fromCharCode(data[0], data[1], data[2], data[3])
+            if (magic === 'CART') {
+              const cart = parseCART(data)
+              if (cart) {
+                if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
+                  continue
+                }
+                
+                console.log(`Found CART header in page ${pagesChecked + 1}: cartridgeId=${cart.cartridgeId}, totalSize=${cart.totalSize}`)
+                const isPublisherVerified = normalizedPublisher ? normalizeAddress(tx.from) === normalizedPublisher : true
+                cartHeader.value = {
+                  ...cart,
+                  txHash: tx.hash,
+                  height: tx.height || tx.blockNumber || 0,
+                  publisherVerified: isPublisherVerified,
+                  fromAddress: tx.from
+                }
+                
+                // Check cache immediately after finding CART header
+                await checkCacheAndLoad(cart)
+                
+                return // Found header, done!
+              }
+            }
+          } catch (err) {
+            // Continue
+          }
+        }
+
+        startAt = nextPageTxs.length > 0 ? nextPageTxs[nextPageTxs.length - 1].hash : null
+        pagesChecked++
+      }
+
+      // No CART header found in limited search
+      console.warn('CART header not found in recent transactions')
       cartHeader.value = null
-      error.value = `CART header not found in cartridge address transactions (found ${foundDATA} DATA chunks, ${foundOther} other transactions)`
+      error.value = 'CART header not found in recent transactions. The cartridge may not be fully uploaded yet.'
     } catch (err) {
       error.value = err.message || 'Failed to load cartridge info'
       console.error('Cartridge info loading error:', err)
@@ -123,35 +212,48 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       return
     }
 
+    // If already loaded from cache (during loadCartridgeInfo), just return
+    if (fileData.value && verified.value && cartHeader.value) {
+      console.log('Cartridge already loaded from cache, skipping download')
+      return
+    }
+
     console.log('Loading cartridge from address:', cartridgeAddress.value)
 
     loading.value = true
     error.value = null
-    progress.value = { chunksFound: 0, expectedChunks: 0, bytes: 0, rate: 0 }
+    progress.value = { 
+      chunksFound: 0, 
+      expectedChunks: 0, 
+      bytes: 0, 
+      rate: 0, 
+      phase: 'idle', 
+      statusMessage: '',
+      txPagesFetched: 0,
+      txTotalFetched: 0,
+      txEstimatedPages: 0
+    }
     syncStartTime.value = Date.now()
 
     try {
-      // First, try to load CART header to get cartridge info for cache lookup
-      // We'll do a quick fetch to get the header first
-      const quickTxs = await rpcClient.value.getAllTransactionsByAddress(
-        cartridgeAddress.value,
-        500,
-        () => {} // No progress callback for quick fetch
-      )
-
+      // First, quickly find CART header from recent transactions (same optimized approach as loadCartridgeInfo)
+      // CART header is uploaded AFTER all DATA chunks, so it's in the most recent transactions
       const normalizedPublisher = publisherAddress.value ? normalizeAddress(publisherAddress.value) : null
-      const filteredTxs = quickTxs.filter(tx => {
-        if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
-          return false
-        }
-        return true
-      })
-
-      // Find CART header - sort by newest first since CART is uploaded AFTER all DATA chunks
       let quickCartData = null
-      const sortedTxs = [...filteredTxs].sort((a, b) => (b.height || 0) - (a.height || 0))
       
-      for (const tx of sortedTxs) {
+      // Fetch just the first page (most recent transactions) to find CART header quickly
+      const recentTxs = await rpcClient.value.getTransactionsByAddress(
+        cartridgeAddress.value,
+        500 // Just fetch first 500 (most recent)
+      )
+      
+      // Transactions are already in descending order (newest first) from RPC
+      for (const tx of recentTxs) {
+        // Filter by publisher if specified
+        if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
+          continue
+        }
+        
         const txData = tx.recipientData || tx.data || ''
         if (!txData) continue
 
@@ -160,15 +262,68 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
           const cart = parseCART(data)
           if (cart) {
             quickCartData = cart
+            const isPublisherVerified = normalizedPublisher ? normalizeAddress(tx.from) === normalizedPublisher : true
             cartHeader.value = {
               ...cart,
               txHash: tx.hash,
-              height: tx.height
+              height: tx.height || tx.blockNumber || 0,
+              publisherVerified: isPublisherVerified,
+              fromAddress: tx.from
             }
             break
           }
         } catch (err) {
           // Not a CART header, continue
+        }
+      }
+      
+      // If not found in first page, check a few more pages (but limit to avoid delay)
+      if (!quickCartData) {
+        let startAt = recentTxs.length > 0 ? recentTxs[recentTxs.length - 1].hash : null
+        let pagesChecked = 1
+        const maxPages = 3 // Limit to 3 pages for CART header search
+        
+        while (pagesChecked < maxPages && startAt) {
+          const nextPageTxs = await rpcClient.value.getTransactionsByAddress(
+            cartridgeAddress.value,
+            500,
+            startAt
+          )
+          
+          if (nextPageTxs.length === 0) break
+          
+          for (const tx of nextPageTxs) {
+            if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
+              continue
+            }
+            
+            const txData = tx.recipientData || tx.data || ''
+            if (!txData) continue
+            
+            try {
+              const data = hexToBytes(txData)
+              const cart = parseCART(data)
+              if (cart) {
+                quickCartData = cart
+                const isPublisherVerified = normalizedPublisher ? normalizeAddress(tx.from) === normalizedPublisher : true
+                cartHeader.value = {
+                  ...cart,
+                  txHash: tx.hash,
+                  height: tx.height || tx.blockNumber || 0,
+                  publisherVerified: isPublisherVerified,
+                  fromAddress: tx.from
+                }
+                break
+              }
+            } catch (err) {
+              // Continue
+            }
+          }
+          
+          if (quickCartData) break
+          
+          startAt = nextPageTxs.length > 0 ? nextPageTxs[nextPageTxs.length - 1].hash : null
+          pagesChecked++
         }
       }
 
@@ -211,24 +366,75 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       fileData.value = null
       verified.value = false
       
-      // Reuse the already-fetched transactions (we already have quickTxs and filteredTxs)
-      console.log(`Using ${filteredTxs.length} transactions from publisher`)
-
       // Use the already-found CART header
       const cartData = quickCartData
       
       console.log('Found CART header:', cartHeader.value)
 
-      // Compute expected chunks
+      // Compute expected chunks and set immediately so progress bar appears right away
       const expectedChunks = computeExpectedChunks(cartData.totalSize, cartData.chunkSize)
       progress.value.expectedChunks = expectedChunks
+      progress.value.chunksFound = 0
+      progress.value.phase = 'fetching-txs'
+      progress.value.statusMessage = 'Fetching transactions from blockchain...'
+      progress.value.txPagesFetched = 0
+      progress.value.txTotalFetched = 0
+      progress.value.txEstimatedPages = 0
+      
+      // Now fetch ALL transactions for the full download (we need all chunks)
+      console.log('Fetching all transactions for download...')
+      const allTxs = await rpcClient.value.getAllTransactionsByAddress(
+        cartridgeAddress.value,
+        500,
+        async (progressInfo) => {
+          // Update progress during fetch
+          progress.value.txPagesFetched = progressInfo.page
+          progress.value.txTotalFetched = progressInfo.totalFetched
+          // Estimate total pages based on current rate (if we got a full page, estimate more)
+          if (progressInfo.pageSize === 500 && progressInfo.page <= 3) {
+            // After 3 pages, estimate based on pattern
+            progress.value.txEstimatedPages = Math.max(progressInfo.page + 10, progressInfo.page * 2)
+          } else if (progressInfo.pageSize < 500) {
+            // Last page, we know the total
+            progress.value.txEstimatedPages = progressInfo.page
+          } else {
+            // Keep increasing estimate
+            progress.value.txEstimatedPages = Math.max(progress.value.txEstimatedPages, progressInfo.page + 5)
+          }
+          console.log(`Fetching transactions: page ${progressInfo.page}, ${progressInfo.totalFetched} transactions`)
+          // Yield to UI to show updates
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }
+      )
+      
+      // Set final values
+      progress.value.txPagesFetched = Math.ceil(allTxs.length / 500)
+      progress.value.txEstimatedPages = progress.value.txPagesFetched
+      
+      progress.value.phase = 'parsing-chunks'
+      // Don't show status message - progress bars show it
+      progress.value.statusMessage = ''
+      
+      const filteredTxs = allTxs.filter(tx => {
+        if (normalizedPublisher && normalizeAddress(tx.from) !== normalizedPublisher) {
+          return false
+        }
+        return true
+      })
+      
+      console.log(`Using ${filteredTxs.length} transactions from publisher`)
 
-      // Collect DATA chunks
+      // Collect DATA chunks with incremental progress updates
       const chunks = new Map()
+      let processedCount = 0
+      const totalTxs = filteredTxs.length
       
       for (const tx of filteredTxs) {
         const txData = tx.recipientData || tx.data || ''
-        if (!txData) continue
+        if (!txData) {
+          processedCount++
+          continue
+        }
 
         try {
           const data = hexToBytes(txData)
@@ -241,14 +447,31 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
                 ...dataChunk,
                 txHash: tx.hash
               })
+              // Update progress incrementally
+              progress.value.chunksFound = chunks.size
+              
+              // Update rate periodically
+              const elapsed = (Date.now() - syncStartTime.value) / 1000
+              if (elapsed > 0) {
+                progress.value.rate = chunks.size / elapsed
+              }
             }
           }
         } catch (err) {
           // Not a DATA chunk, continue
         }
+        
+        processedCount++
+        // Update progress every 10 transactions to avoid too many UI updates
+        if (processedCount % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0)) // Yield to UI
+        }
       }
 
       progress.value.chunksFound = chunks.size
+      progress.value.phase = 'reconstructing'
+      // Don't show status message for parsing/reconstructing - progress bars show it
+      progress.value.statusMessage = ''
       console.log(`Found ${chunks.size} of ${expectedChunks} expected chunks`)
 
       if (chunks.size < expectedChunks) {
@@ -257,7 +480,7 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
         return
       }
 
-      // Reconstruct file
+      // Reconstruct file with incremental progress updates
       const sortedChunks = Array.from(chunks.values())
         .sort((a, b) => a.chunkIndex - b.chunkIndex)
 
@@ -265,17 +488,28 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       let offset = 0
       let totalBytes = 0
 
-      for (const chunk of sortedChunks) {
+      for (let i = 0; i < sortedChunks.length; i++) {
+        const chunk = sortedChunks[i]
         const chunkData = chunk.data.slice(0, chunk.len)
         reconstructed.set(chunkData, offset)
         offset += chunk.len
         totalBytes += chunk.len
+        
+        // Update progress incrementally during reconstruction
+        progress.value.bytes = totalBytes
+        
+        // Update every 50 chunks to avoid too many UI updates
+        if (i % 50 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0)) // Yield to UI
+        }
       }
 
       progress.value.bytes = totalBytes
       fileData.value = reconstructed
 
       // Verify SHA256
+      progress.value.phase = 'verifying'
+      progress.value.statusMessage = 'Verifying file integrity...'
       console.log('Verifying SHA256...')
       const isValid = await verifySHA256(reconstructed, cartData.sha256)
       verified.value = isValid
@@ -300,6 +534,9 @@ export function useCartridge(rpcClient, cartridgeAddress, publisherAddress) {
       if (elapsed > 0) {
         progress.value.rate = chunks.size / elapsed
       }
+      
+      progress.value.phase = 'idle'
+      progress.value.statusMessage = ''
 
     } catch (err) {
       error.value = err.message || 'Failed to load cartridge'
