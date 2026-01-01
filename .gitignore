@@ -12,3 +12,5 @@ uploader/account_credentials.txt
 upload_cartridge_*.json
 games/
 .DS_Store
+*.zip
+uploader/uploader

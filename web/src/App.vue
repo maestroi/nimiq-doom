@@ -9,7 +9,7 @@
       :selected-game="selectedGame"
       :selected-version="selectedVersion"
       :loading="catalogLoading || loading"
-      :catalogs="catalogs"
+      :catalogs="visibleCatalogs"
       :selected-catalog-name="selectedCatalogName"
       :catalog-address="catalogAddress"
       :custom-catalog-address="customCatalogAddress"
@@ -179,24 +179,41 @@ const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
 
 // Configuration - Multiple catalogs
 const catalogs = ref([
-  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0' },
+  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0', devOnly: true },
   { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' },
   { name: 'Custom...', address: 'custom' }
 ])
-const selectedCatalogName = ref('Test')
+const selectedCatalogName = ref('Main') // Default to Main (public catalog)
 const customCatalogAddress = ref('')
+
+// Developer Mode
+const developerMode = ref(false)
+const showRetiredGames = ref(false)
+
+// Visible catalogs (hide Test catalog unless in developer mode)
+const visibleCatalogs = computed(() => {
+  if (developerMode.value) {
+    return catalogs.value
+  }
+  return catalogs.value.filter(c => !c.devOnly)
+})
+
+// Switch away from Test catalog if developer mode is disabled
+watch(developerMode, (newVal) => {
+  if (!newVal && selectedCatalogName.value === 'Test') {
+    selectedCatalogName.value = 'Main'
+    console.log('Switched from Test to Main catalog (developer mode disabled)')
+  }
+})
+
 const catalogAddress = computed(() => {
   if (selectedCatalogName.value === 'Custom...') {
     return customCatalogAddress.value || null
   }
   const catalog = catalogs.value.find(c => c.name === selectedCatalogName.value)
-  return catalog ? catalog.address : catalogs.value[0].address
+  return catalog ? catalog.address : catalogs.value.find(c => c.name === 'Main')?.address
 })
 const publisherAddress = ref('NQ89 4GDH 0J4U C2FY TU0Y TP1X J1H7 3HX3 PVSE') // Trusted publisher address
-
-// Developer Mode
-const developerMode = ref(false)
-const showRetiredGames = ref(false)
 
 // Catalog and Cartridge
 const selectedPlatform = ref(null)
