@@ -155,8 +155,7 @@ export function useCatalog(rpcClient, catalogAddress, publisherAddress, showReti
       0: 'DOS',
       1: 'GB',
       2: 'GBC',
-      3: 'Windows',
-      4: 'Linux'
+      3: 'NES'
     }
     return platforms[platformCode] || `Platform ${platformCode}`
   }

@@ -165,6 +165,7 @@ import { useCatalog } from './composables/useCatalog.js'
 import { useCartridge } from './composables/useCartridge.js'
 import { useDosEmulator } from './composables/useDosEmulator.js'
 import { useGbEmulator } from './composables/useGbEmulator.js'
+import { useNesEmulator } from './composables/useNesEmulator.js'
 
 // RPC Configuration
 const rpcEndpoints = ref([
@@ -394,6 +395,7 @@ function getPlatformName(platformCode) {
     case 0: return 'DOS'
     case 1: return 'GB'
     case 2: return 'GBC'
+    case 3: return 'NES'
     default: return 'DOS'
   }
 }
@@ -431,6 +433,7 @@ const manifestForEmulator = computed(() => {
 // Emulator composables (use emulatorLoading and emulatorError refs, not computed properties)
 const dosEmulator = useDosEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
 const gbEmulator = useGbEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
+const nesEmulator = useNesEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
 
 // Wrapper functions that get the container element and call the composable
 async function runGame() {
@@ -448,6 +451,8 @@ async function runGame() {
     await dosEmulator.runGame(containerElement)
   } else if (platform === 'GB' || platform === 'GBC') {
     await gbEmulator.runGame(containerElement)
+  } else if (platform === 'NES') {
+    await nesEmulator.runGame(containerElement)
   } else {
     error.value = `Emulator for platform "${platform}" not yet implemented`
   }
@@ -463,6 +468,8 @@ async function stopGame() {
     await dosEmulator.stopGame(containerElement)
   } else if (platform === 'GB' || platform === 'GBC') {
     await gbEmulator.stopGame(containerElement)
+  } else if (platform === 'NES') {
+    await nesEmulator.stopGame(containerElement)
   }
 }
 

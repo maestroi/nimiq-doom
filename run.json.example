@@ -3,5 +3,7 @@
   "filename": "game.zip",
   "executable": "GAME.EXE",
   "rom": "game.gb",
-  "platform": "DOS"
+  "platform": "DOS",
+  "_platform_options": ["DOS", "GB", "GBC", "NES"],
+  "_notes": "For NES games, use rom field with .nes extension"
 }

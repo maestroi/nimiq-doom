@@ -282,7 +282,8 @@ const platformName = computed(() => {
   const platformCode = props.cartHeader.platform
   return platformCode === 0 ? 'DOS' : 
          platformCode === 1 ? 'GB' :
-         platformCode === 2 ? 'GBC' : `Platform ${platformCode}`
+         platformCode === 2 ? 'GBC' :
+         platformCode === 3 ? 'NES' : `Platform ${platformCode}`
 })
 
 // Combined progress that accounts for all three phases:

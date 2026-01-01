@@ -557,7 +557,7 @@ func newUploadCartridgeCmd() *cobra.Command {
 	cmd.Flags().Uint32Var(&cartridgeID, "cartridge-id", 0, "Cartridge ID (uint32, auto-generated if not provided)")
 	cmd.Flags().StringVar(&title, "title", "", "Short title (max 16 chars, required)")
 	cmd.Flags().StringVar(&semver, "semver", "", "Semantic version (e.g., 1.0.0, required)")
-	cmd.Flags().Uint8Var(&platform, "platform", 0, "Platform code: 0=DOS, 1=GB, 2=GBC (default: 0)")
+	cmd.Flags().Uint8Var(&platform, "platform", 0, "Platform code: 0=DOS, 1=GB, 2=GBC, 3=NES (default: 0)")
 	cmd.Flags().StringVar(&cartridgeAddr, "cartridge-addr", "", "Cartridge address (NQ..., or use --generate-cartridge-addr)")
 	cmd.Flags().BoolVar(&generateCartAddr, "generate-cartridge-addr", false, "Generate a new cartridge address")
 	cmd.Flags().StringVar(&catalogAddr, "catalog-addr", "", "Catalog address (NQ..., 'main', 'test', required)")
