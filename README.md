@@ -1,6 +1,6 @@
 # Nimiq: Retro Games Onchain
 
-A project that stores retro game files (DOS, Game Boy, and other classic games) on the Nimiq blockchain by splitting them into 64-byte transaction payload chunks. Anyone can reconstruct the file from the chain and play it using emulators like DOSBox, JS-DOS, or Game Boy emulators.
+A project that stores retro game files (DOS, Game Boy, NES, and other classic games) on the Nimiq blockchain using a cartridge-based architecture. Games are stored as cartridges with catalog entries, allowing versioning and discovery. Anyone can browse the catalog, load cartridges, and play games using emulators like DOSBox, binjgb, or other browser-based emulators.
 
 **🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
 
@@ -8,15 +8,19 @@ A project that stores retro game files (DOS, Game Boy, and other classic games) 
 
 ## Architecture
 
-- **Uploader** (Go): CLI tool to chunk files and submit transactions to Nimiq blockchain
-- **Web** (Vue 3): Frontend that connects directly to public Nimiq RPC endpoints to fetch transactions, reconstruct files, verify SHA256, and run games in the browser using emulators (JS-DOS for DOS games, with support for Game Boy and other platforms)
+The system uses a **cartridge-based architecture** with three main components:
+
+- **CART (Cartridge Header)**: Metadata transaction stored at a cartridge address containing schema, platform, chunk size, cartridge ID, total size, and SHA256 hash
+- **DATA (Data Chunks)**: File data split into 64-byte transaction payloads, stored at the cartridge address
+- **CENT (Catalog Entry)**: Registration transaction in a catalog address linking app-id, cartridge-id, semver, cartridge address, and title
 
 **Key Features:**
 - ✅ **No Backend Required** - Frontend connects directly to public Nimiq RPC endpoints
 - ✅ **Static Hosting** - Perfect for GitHub Pages, Netlify, Vercel, etc.
 - ✅ **Browser-Based** - All file reconstruction happens client-side using WebCrypto API
-- ✅ **RPC Endpoint Selection** - Users can choose from public endpoints or use custom ones
-- ✅ **Direct Blockchain Access** - Fetches transactions by hash directly from the blockchain
+- ✅ **Catalog System** - Centralized catalog for game discovery and versioning
+- ✅ **Version Management** - Automatic versioning with semantic versioning (semver)
+- ✅ **Platform Support** - DOS, Game Boy, Game Boy Color, NES, and more
 
 ## Quick Start
 
@@ -64,64 +68,77 @@ go install .
 uploader --help
 ```
 
-## Payload Format
+## Cartridge System Overview
 
-Each transaction's 64-byte data field follows this exact layout:
+### Components
+
+1. **Cartridge Address**: Each game version gets its own unique address where CART header and DATA chunks are stored
+2. **Catalog Address**: Central address where all CENT entries are registered for game discovery
+3. **App-ID**: Unique identifier for a game (e.g., "Doom" = app-id 1)
+4. **Cartridge-ID**: Version identifier within an app (e.g., Doom v1.0.0 = cartridge-id 1, v1.1.0 = cartridge-id 2)
+
+### Workflow
+
+1. **Upload**: Uploader creates a cartridge address, uploads CART header and DATA chunks
+2. **Register**: Uploader registers a CENT entry in the catalog address
+3. **Discover**: Frontend queries catalog address to list all games
+4. **Load**: Frontend queries cartridge address to fetch CART header and DATA chunks
+5. **Reconstruct**: Frontend reconstructs file from chunks and verifies SHA256
+6. **Play**: Frontend extracts ZIP and runs game in appropriate emulator
+
+## Payload Formats
+
+### CART Header (64 bytes)
+
+The CART header contains metadata about the cartridge:
 
 ```
 Offset  Size    Field           Description
-0..3    4       MAGIC           ASCII "DOOM" (0x44 0x4F 0x4F 0x4D)
-4..7    4       GAME_ID         uint32 little-endian
-8..11   4       CHUNK_INDEX     uint32 little-endian
-12      1       LEN             uint8 (0..51)
-13..63  51      DATA            Only first LEN bytes are valid
+0..3    4       MAGIC           ASCII "CART" (0x43 0x41 0x52 0x54)
+4       1       SCHEMA          Schema version (currently 0)
+5       1       PLATFORM        Platform code (0=DOS, 1=GB, 2=GBC, 3=NES)
+6       1       CHUNK_SIZE      Size of data chunks (typically 51)
+7       1       FLAGS           Reserved flags
+8..11   4       CARTRIDGE_ID     uint32 little-endian
+12..19  8       TOTAL_SIZE       uint64 little-endian
+20..51  32      SHA256           File hash
+52..63  12      RESERVED         Reserved for future use
+```
+
+### DATA Chunk (64 bytes)
+
+Each DATA chunk contains a portion of the file:
+
+```
+Offset  Size    Field           Description
+0..3    4       MAGIC           ASCII "DATA" (0x44 0x41 0x54 0x41)
+4..7    4       CARTRIDGE_ID     uint32 little-endian
+8..11   4       CHUNK_INDEX      uint32 little-endian
+12      1       LEN              uint8 (0..51)
+13..63  51      DATA             Only first LEN bytes are valid
 ```
 
 - `LEN < 51` indicates the last chunk
-- Reconstruction can also use `manifest.total_size` to determine completion
+- Reconstruction uses `CART.total_size` to determine completion
 
-## Manifest Format
+### CENT Entry (64 bytes)
 
-The `manifest.json` file contains metadata about the stored file:
+The CENT entry registers a cartridge in the catalog:
 
-```json
-{
-  "game_id": 1,
-  "filename": "doom1.wad",
-  "total_size": 4194304,
-  "chunk_size": 51,
-  "sha256": "abc123...",
-  "sender_address": "NQ00 ...",
-  "network": "mainnet",
-  "expected_tx_hashes": [
-    "tx_hash_1",
-    "tx_hash_2",
-    "..."
-  ]
-}
 ```
-
-**Important:** The `expected_tx_hashes` array contains the transaction hashes that store each chunk. The frontend uses these to fetch transactions directly from the blockchain.
-
-## Generating a Manifest
-
-The uploader automatically generates a manifest after a successful upload. You can also generate one manually:
-
-```bash
-cd uploader
-go build -o uploader .
-./uploader manifest \
-  --file /path/to/file.bin \
-  --game-id 1 \
-  --sender "NQ00 ..." \
-  --network mainnet \
-  --output manifest.json
+Offset  Size    Field           Description
+0..3    4       MAGIC           ASCII "CENT" (0x43 0x45 0x4E 0x54)
+4       1       SCHEMA          Schema version (currently 0)
+5       1       PLATFORM        Platform code (0=DOS, 1=GB, 2=GBC, 3=NES)
+6       1       FLAGS           Flags (bit 0: retired)
+7..10   4       APP_ID           uint32 little-endian
+11      1       SEMVER_MAJOR     uint8
+12      1       SEMVER_MINOR     uint8
+13      1       SEMVER_PATCH     uint8
+14..33  20      CARTRIDGE_ADDR   20-byte cartridge address
+34..49  16      TITLE_SHORT      Null-terminated string (max 15 chars)
+50..63  14      RESERVED         Reserved for future use
 ```
-
-This will:
-- Read the file
-- Calculate SHA256
-- Create `manifest.json` with all metadata (but without `expected_tx_hashes` - those are added after upload)
 
 ## Account Management
 
@@ -201,7 +218,7 @@ The script will:
 - Create a ZIP file with all game files
 - Auto-detect the game executable (.exe, .com, or .bat for DOS games)
 - Calculate SHA256 hash
-- Ensure proper file structure for emulators (JS-DOS for DOS games)
+- Ensure proper file structure for emulators
 
 ### Using the Go Package Tool Directly
 
@@ -214,6 +231,7 @@ cd uploader
 ```
 
 **Important:** The ZIP file should contain:
+- `run.json` (optional but recommended) - See [RUN_JSON.md](RUN_JSON.md) for format
 - Game executable (.exe, .com, or .bat for DOS games; .gb/.gbc for Game Boy games)
 - Game data files (.WAD, .DAT, etc. for DOS games; ROM files for Game Boy)
 - Any other required files
@@ -238,62 +256,133 @@ To package an IMG file:
 ./scripts/package-game.sh extracted-files DiggerRem.zip DIGGER.EXE
 ```
 
-## Uploading Files
+## Uploading Cartridges
 
-### Real Upload Mode
+### Basic Upload
 
 The uploader will automatically:
 1. Check that your account is imported and unlocked
 2. Wait for consensus to be established
 3. Wait for sufficient balance (if needed)
-4. Create chunks and send transactions
-5. Generate a manifest with transaction hashes
+4. Query catalog to determine app-id and cartridge-id
+5. Generate or use a cartridge address
+6. Create CART header and DATA chunks
+7. Send transactions to cartridge address
+8. Register CENT entry in catalog address
 
 ```bash
-./uploader upload \
-  --file /path/to/file.zip \
-  --game-id 1 \
+./uploader upload-cartridge \
+  --file /path/to/game.zip \
+  --title "Doom" \
+  --semver "1.0.0" \
+  --platform 0 \
+  --catalog-addr "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES" \
+  --generate-cartridge-addr \
   --rpc-url http://localhost:8648 \
-  --receiver "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES" \
   --rate 1.0
 ```
 
-The uploader supports:
-- Rate limiting (configurable tx/s)
-- Progress tracking (resumable via `upload_progress_<game_id>.json`)
-- Retry logic for failed sends
-- Automatic account status verification
-- Automatic manifest generation with transaction hashes
+**Platform Codes:**
+- `0` = DOS
+- `1` = Game Boy (GB)
+- `2` = Game Boy Color (GBC)
+- `3` = NES
 
-After upload, the manifest will be saved with all transaction hashes. Place it in the `manifests/` directory for the frontend to discover it.
+**Catalog Address Shortcuts:**
+- `test` = Testnet catalog address
+- `main` = Mainnet catalog address
+- Or provide full address: `"NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES"`
+
+### Automatic Version Detection
+
+The uploader automatically detects if you're uploading a new version by matching the title:
+
+- **If title matches existing game**: Uses the existing app-id, auto-increments cartridge-id
+- **If title is new**: Creates a new app-id (new game)
+
+Just use the **same title** as the existing game:
+
+```bash
+./uploader upload-cartridge \
+  --file doom-v1.1.0.zip \
+  --title "Doom" \
+  --semver "1.1.0" \
+  --platform 0 \
+  --generate-cartridge-addr \
+  --catalog-addr test
+```
+
+**What happens:**
+- Finds existing app-id for "Doom" (e.g., app-id 1)
+- Auto-generates next cartridge-id (e.g., cartridge-id 2)
+- Creates new cartridge address
+- Uploads as version 1.1.0
+
+See [UPLOAD_NEW_VERSION.md](uploader/UPLOAD_NEW_VERSION.md) for more details.
+
+### Manual App-ID Specification
+
+If you want to explicitly specify the app-id:
+
+```bash
+./uploader upload-cartridge \
+  --file doom-v1.1.0.zip \
+  --app-id 1 \
+  --title "Doom" \
+  --semver "1.1.0" \
+  --platform 0 \
+  --generate-cartridge-addr \
+  --catalog-addr test
+```
 
 ### Dry-Run Mode (Testing)
 
-Generate chunk payloads without actually sending transactions:
+Generate cartridge payloads without actually sending transactions:
 
 ```bash
-./uploader upload \
-  --file /path/to/file.bin \
-  --game-id 1 \
-  --sender "NQ00 ..." \
-  --dry-run \
-  --rate 1.0
+./uploader upload-cartridge \
+  --file /path/to/game.zip \
+  --title "Test Game" \
+  --semver "1.0.0" \
+  --platform 0 \
+  --catalog-addr test \
+  --dry-run
 ```
 
-This creates `upload_plan.jsonl` with one JSON object per line for manual broadcasting.
+This creates `upload_cartridge_<app_id>_<cartridge_id>.json` with upload progress data.
+
+### Upload Options
+
+- `--file`: Path to ZIP file to upload
+- `--title`: Game title (used for catalog entry)
+- `--semver`: Semantic version (e.g., "1.0.0")
+- `--platform`: Platform code (0=DOS, 1=GB, 2=GBC, 3=NES)
+- `--catalog-addr`: Catalog address (required)
+- `--generate-cartridge-addr`: Generate new cartridge address (required for new uploads)
+- `--cartridge-addr`: Use existing cartridge address (optional)
+- `--app-id`: Explicit app-id (optional, auto-detected if not provided)
+- `--cartridge-id`: Explicit cartridge-id (optional, auto-incremented if not provided)
+- `--rpc-url`: Nimiq RPC endpoint URL
+- `--sender`: Sender address (defaults to account_credentials.txt)
+- `--rate`: Transaction rate limit (tx/s, default 1.0)
+- `--fee`: Transaction fee in Luna (optional)
+- `--dry-run`: Don't send transactions, just generate plan
 
 ## Reconstruction Process
 
 The reconstruction process happens entirely in the browser:
 
-1. **Load Manifest** - Frontend loads manifest from `/manifests/` directory (static JSON files)
-2. **Select RPC Endpoint** - User chooses a public Nimiq RPC endpoint (or custom)
-3. **Fetch Transactions** - Frontend calls `getTransactionByHash` for each hash in `expected_tx_hashes`
-4. **Parse Chunks** - Extract DOOM magic bytes, game_id, chunk_idx, length, and data from each transaction
-5. **Sort Chunks** - Sort by `chunk_idx` to ensure correct order
-6. **Reconstruct File** - Concatenate data fields (only first `len` bytes of each)
-7. **Verify SHA256** - Use WebCrypto API to verify the reconstructed file matches the manifest
-8. **Run Game** - Extract ZIP (if needed), mount files in JS-DOS, and execute
+1. **Load Catalog** - Frontend queries catalog address to get list of games (CENT entries)
+2. **Select Game** - User selects a game and version from the catalog
+3. **Get Cartridge Address** - Frontend extracts cartridge address from CENT entry
+4. **Fetch CART Header** - Frontend queries cartridge address to find CART header transaction
+5. **Fetch DATA Chunks** - Frontend queries cartridge address to fetch all DATA chunk transactions
+6. **Parse Chunks** - Extract cartridge_id, chunk_idx, length, and data from each transaction
+7. **Sort Chunks** - Sort by `chunk_idx` to ensure correct order
+8. **Reconstruct File** - Concatenate data fields (only first `len` bytes of each)
+9. **Verify SHA256** - Use WebCrypto API to verify the reconstructed file matches CART header
+10. **Extract run.json** - Extract optional `run.json` from ZIP for emulator configuration
+11. **Run Game** - Extract ZIP (if needed), mount files in emulator, and execute
 
 No backend needed! Everything runs client-side.
 
@@ -302,21 +391,54 @@ No backend needed! Everything runs client-side.
 The Vue 3 frontend provides:
 
 1. **RPC Endpoint Selection** - Choose from public endpoints (NimiqScan Mainnet/Testnet) or enter custom
-2. **Manifest Selection** - Load manifests from `/manifests/` directory
-3. **Sync Chunks** - Fetches transactions directly from blockchain by hash
-4. **Progress Tracking** - Shows chunks fetched, bytes downloaded, and completion percentage
-5. **Verify SHA256** - Browser-side verification using WebCrypto API (automatic after sync)
-6. **Run Game** - Integrates with emulators (JS-DOS for DOS games) to run games directly in the browser
+2. **Catalog Address Selection** - Enter catalog address to browse games
+3. **Game Browser** - Browse games grouped by app-id with version selection
+4. **Cartridge Loading** - Fetches CART header and DATA chunks from cartridge address
+5. **Progress Tracking** - Shows chunks fetched, bytes downloaded, and completion percentage
+6. **Verify SHA256** - Browser-side verification using WebCrypto API (automatic after sync)
+7. **Run Game** - Integrates with emulators to run games directly in the browser
 
 ### Emulator Integration
 
 The frontend automatically:
 - Extracts game files from ZIP archives using JSZip
 - **DOS Games**: Mounts IMG disk images using DOSBox's `imgmount` command, writes files to JS-DOS virtual filesystem, executes game executables (.exe, .com, .bat), creates AUTOEXEC.BAT files for automatic game startup
-- **Game Boy Games**: Support for Game Boy emulators (coming soon)
+- **Game Boy Games**: Loads ROM files into binjgb WebAssembly emulator with save state support
+- **Game Boy Color Games**: Full color palette support via binjgb
+- **NES Games**: Loads ROM files into NES emulator
 - **Other Platforms**: Extensible architecture for additional emulator support
 
 **Note:** Game assets are not included due to copyright. Users must upload their own games to the blockchain.
+
+## run.json Format
+
+The `run.json` file is an optional metadata file that should be included in the ZIP archive. It provides additional information about how to run the game.
+
+See [RUN_JSON.md](RUN_JSON.md) for complete documentation.
+
+**Quick Example:**
+
+```json
+{
+  "title": "Commander Keen",
+  "filename": "keen.zip",
+  "executable": "KEEN.EXE",
+  "platform": "DOS"
+}
+```
+
+## Retiring Games
+
+To retire a game (hide it from listings), use the retire command:
+
+```bash
+./uploader retire-app \
+  --app-id 1 \
+  --catalog-addr test \
+  --rpc-url http://localhost:8648
+```
+
+This sets the retired flag on all CENT entries for the specified app-id, hiding the game from catalog listings (unless "Show Retired Games" is enabled in the UI).
 
 ## GitHub Pages Deployment
 
@@ -350,7 +472,7 @@ Or run directly:
 
 ```bash
 cd uploader
-go run . manifest --file test.bin --game-id 1 --sender "NQ00 ..."
+go run . upload-cartridge --file test.zip --title "Test" --semver "1.0.0" --platform 0 --catalog-addr test
 ```
 
 ### Web
@@ -371,45 +493,65 @@ npm run build
 
 ## Testing
 
-Create a test binary and upload it:
+Create a test game and upload it:
 
 ```bash
-# Create a small test file
-dd if=/dev/urandom of=test.bin bs=256 count=1
+# Create a small test ZIP file
+cd uploader
+./uploader package --dir ./test-files --output test.zip
 
 # Upload to blockchain
-cd uploader
-go build -o uploader .
-./uploader upload \
-  --file ../test.bin \
-  --game-id 999 \
+./uploader upload-cartridge \
+  --file test.zip \
+  --title "Test Game" \
+  --semver "1.0.0" \
+  --platform 0 \
+  --catalog-addr test \
+  --generate-cartridge-addr \
   --rpc-url http://localhost:8648
-
-# This will generate a manifest with transaction hashes
-# Copy it to manifests/ directory for the frontend to discover
-cp manifest.json ../manifests/testfile.json
 ```
 
 ## How It Works
 
 1. **Upload Phase:**
    - Uploader chunks a file into 51-byte pieces
-   - Each chunk is wrapped in a 64-byte payload with magic bytes, game_id, chunk_idx, length, and data
-   - Transactions are sent to the Nimiq blockchain with these payloads
-   - A manifest is generated with all transaction hashes
+   - Each chunk is wrapped in a 64-byte DATA payload with magic bytes, cartridge_id, chunk_idx, length, and data
+   - CART header is created with metadata
+   - Transactions are sent to a cartridge address with these payloads
+   - CENT entry is registered in catalog address
 
-2. **Reconstruction Phase:**
-   - Frontend loads manifest from `/manifests/` directory
-   - For each transaction hash, calls `getTransactionByHash` on the selected RPC endpoint
+2. **Discovery Phase:**
+   - Frontend queries catalog address to get all CENT entries
+   - CENT entries are grouped by app-id and sorted by semver
+   - User can browse games and select versions
+
+3. **Reconstruction Phase:**
+   - Frontend extracts cartridge address from selected CENT entry
+   - Frontend queries cartridge address to find CART header transaction
+   - Frontend queries cartridge address to fetch all DATA chunk transactions
    - Parses chunks from transaction data
    - Reconstructs the original file
-   - Verifies SHA256 hash matches the manifest
+   - Verifies SHA256 hash matches CART header
 
-3. **Execution Phase:**
+4. **Execution Phase:**
    - If the file is a ZIP, extracts it using JSZip
+   - Extracts `run.json` if present for emulator configuration
    - **DOS Games**: Writes files to JS-DOS virtual filesystem, mounts IMG files if detected, executes the game executable
-   - **Game Boy Games**: Loads ROM files into Game Boy emulator (coming soon)
+   - **Game Boy Games**: Loads ROM files into binjgb emulator
+   - **NES Games**: Loads ROM files into NES emulator
    - **Other Platforms**: Platform-specific emulator integration
+
+## Migration from Old System
+
+**⚠️ The old "DOOM" magic bytes system is deprecated and no longer supported.**
+
+The new cartridge system provides:
+- Better organization with catalog-based discovery
+- Version management with semantic versioning
+- Platform support beyond DOS
+- Improved metadata handling
+
+Old manifests and uploads using the "DOOM" magic bytes format will not work with the current frontend.
 
 ## License
 

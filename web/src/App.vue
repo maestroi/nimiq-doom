@@ -523,6 +523,13 @@ async function handleLocalFileUpload(event) {
     return
   }
   
+  // Check file size limit (6MB)
+  const maxFileSize = 6 * 1024 * 1024 // 6MB
+  if (file.size > maxFileSize) {
+    error.value = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 6MB`
+    return
+  }
+  
   loading.value = true
   error.value = null
   

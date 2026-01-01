@@ -68,6 +68,16 @@ func newUploadCmd() *cobra.Command {
 				receiver = "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES"
 			}
 
+			// Check file size limit (6MB)
+			const maxFileSize = 6 * 1024 * 1024 // 6MB
+			fileInfo, err := os.Stat(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to get file info: %w", err)
+			}
+			if fileInfo.Size() > maxFileSize {
+				return fmt.Errorf("file size (%d bytes) exceeds maximum allowed size of 6MB (%d bytes)", fileInfo.Size(), maxFileSize)
+			}
+
 			chunks, err := ChunkFile(filePath, gameID)
 			if err != nil {
 				return fmt.Errorf("failed to chunk file: %w", err)

@@ -190,6 +190,16 @@ func newUploadCartridgeCmd() *cobra.Command {
 				return fmt.Errorf("invalid cartridge address format: %s", cartridgeAddr)
 			}
 
+			// Check file size limit (6MB)
+			const maxFileSize = 6 * 1024 * 1024 // 6MB
+			fileInfo, err := os.Stat(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to get file info: %w", err)
+			}
+			if fileInfo.Size() > maxFileSize {
+				return fmt.Errorf("file size (%d bytes) exceeds maximum allowed size of 6MB (%d bytes)", fileInfo.Size(), maxFileSize)
+			}
+
 			// Read file and calculate SHA256
 			fileData, err := os.ReadFile(filePath)
 			if err != nil {
