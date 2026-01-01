@@ -165,7 +165,6 @@ import { useCatalog } from './composables/useCatalog.js'
 import { useCartridge } from './composables/useCartridge.js'
 import { useDosEmulator } from './composables/useDosEmulator.js'
 import { useGbEmulator } from './composables/useGbEmulator.js'
-import { useNesEmulator } from './composables/useNesEmulator.js'
 
 // RPC Configuration
 const rpcEndpoints = ref([
@@ -252,11 +251,6 @@ const error = computed(() => catalogError.value || cartridgeError.value || emula
 
 // Handle platform selection
 function onPlatformChange(platform) {
-  // Stop emulator if running
-  if (gameReady.value) {
-    stopGame()
-  }
-  
   selectedPlatform.value = platform
   // Reset game selection when platform changes
   selectedGame.value = null
@@ -264,7 +258,6 @@ function onPlatformChange(platform) {
   fileData.value = null
   verified.value = false
   runJson.value = null
-  gameReady.value = false
   
   // Auto-select first game if platform is selected
   if (platform && catalogGames.value && catalogGames.value.length > 0) {
@@ -277,11 +270,6 @@ function onPlatformChange(platform) {
 
 // Handle game selection
 function onGameChange(game) {
-  // Stop emulator if running
-  if (gameReady.value) {
-    stopGame()
-  }
-  
   selectedGame.value = game
   if (game && game.versions.length > 0) {
     selectedVersion.value = game.versions[0] // Select latest version
@@ -292,7 +280,6 @@ function onGameChange(game) {
   fileData.value = null
   verified.value = false
   runJson.value = null
-  gameReady.value = false
 }
 
 // Handle catalog selection
@@ -327,17 +314,11 @@ function onCustomCatalogChange(address) {
 
 // Handle version selection
 function onVersionChange(version) {
-  // Stop emulator if running
-  if (gameReady.value) {
-    stopGame()
-  }
-  
   selectedVersion.value = version
   // Reset cartridge state
   fileData.value = null
   verified.value = false
   runJson.value = null
-  gameReady.value = false
 }
 
 // Watch for catalog address changes to reload catalog
@@ -395,7 +376,6 @@ function getPlatformName(platformCode) {
     case 0: return 'DOS'
     case 1: return 'GB'
     case 2: return 'GBC'
-    case 3: return 'NES'
     default: return 'DOS'
   }
 }
@@ -433,7 +413,6 @@ const manifestForEmulator = computed(() => {
 // Emulator composables (use emulatorLoading and emulatorError refs, not computed properties)
 const dosEmulator = useDosEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
 const gbEmulator = useGbEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
-const nesEmulator = useNesEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
 
 // Wrapper functions that get the container element and call the composable
 async function runGame() {
@@ -451,8 +430,6 @@ async function runGame() {
     await dosEmulator.runGame(containerElement)
   } else if (platform === 'GB' || platform === 'GBC') {
     await gbEmulator.runGame(containerElement)
-  } else if (platform === 'NES') {
-    await nesEmulator.runGame(containerElement)
   } else {
     error.value = `Emulator for platform "${platform}" not yet implemented`
   }
@@ -468,8 +445,6 @@ async function stopGame() {
     await dosEmulator.stopGame(containerElement)
   } else if (platform === 'GB' || platform === 'GBC') {
     await gbEmulator.stopGame(containerElement)
-  } else if (platform === 'NES') {
-    await nesEmulator.stopGame(containerElement)
   }
 }
 
@@ -520,13 +495,6 @@ async function handleLocalFileUpload(event) {
   
   if (!file.name.toLowerCase().endsWith('.zip')) {
     error.value = 'Please select a ZIP file'
-    return
-  }
-  
-  // Check file size limit (6MB)
-  const maxFileSize = 6 * 1024 * 1024 // 6MB
-  if (file.size > maxFileSize) {
-    error.value = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 6MB`
     return
   }
   

@@ -4,7 +4,6 @@ A project that stores retro game files (DOS, Game Boy, NES, and other classic ga
 
 **🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
 
-> **Note:** If you see this README on GitHub Pages instead of the web app, go to Settings → Pages and change the Source to **"GitHub Actions"** (not "Deploy from a branch").
 
 ## Architecture
 
@@ -85,6 +84,19 @@ uploader --help
 4. **Load**: Frontend queries cartridge address to fetch CART header and DATA chunks
 5. **Reconstruct**: Frontend reconstructs file from chunks and verifies SHA256
 6. **Play**: Frontend extracts ZIP and runs game in appropriate emulator
+
+## Platform Codes
+
+Platform codes are used in CART headers and CENT entries to identify the game platform:
+
+| Code | Platform | Description |
+|------|----------|-------------|
+| `0` | DOS | MS-DOS games (uses JS-DOS/DOSBox) |
+| `1` | GB | Game Boy games (uses binjgb emulator) |
+| `2` | GBC | Game Boy Color games (uses binjgb emulator) |
+| `3` | NES | Nintendo Entertainment System games |
+
+These codes are used when uploading cartridges with the `--platform` flag.
 
 ## Payload Formats
 
