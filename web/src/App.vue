@@ -75,56 +75,17 @@
             </p>
           </div>
            <div>
-             <label class="block text-sm font-medium text-purple-200 mb-2">
-               Sync Speed Override (tx/s)
-             </label>
-             <div class="flex gap-2 items-center">
+             <label class="flex items-center gap-2">
                <input
-                 type="number"
-                 v-model.number="devSyncSpeed"
-                 min="1"
-                 max="1000"
-                 placeholder="Auto (default)"
-                 class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                 type="checkbox"
+                 v-model="showRetiredGames"
+                 @change="loadCatalog"
+                 class="rounded border-purple-600 bg-purple-800/50 text-purple-600 focus:ring-purple-500"
                />
-               <button
-                 @click="devSyncSpeed = null"
-                 class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
-                 title="Reset to default"
-               >
-                 Reset
-               </button>
-             </div>
-             <p class="mt-1 text-xs text-purple-300">
-               Override sync speed for testing. Default: 50 tx/s (public) or 10 tx/s (custom). 
-               {{ devSyncSpeed ? `Current: ${devSyncSpeed} tx/s` : 'Using default rate limiting' }}
-             </p>
-           </div>
-           <div>
-             <label class="block text-sm font-medium text-purple-200 mb-2">
-               Delay Override (ms between requests)
+               <span class="text-sm font-medium text-purple-200">Show Retired Games</span>
              </label>
-             <div class="flex gap-2 items-center">
-               <input
-                 type="number"
-                 v-model.number="devSyncDelay"
-                 min="0"
-                 max="10000"
-                 step="1"
-                 placeholder="Auto (calculated from speed)"
-                 class="flex-1 px-3 py-2 border border-purple-600 text-sm rounded-md text-purple-200 bg-purple-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
-               />
-               <button
-                 @click="devSyncDelay = null"
-                 class="px-3 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800"
-                 title="Reset to default"
-               >
-                 Reset
-               </button>
-             </div>
              <p class="mt-1 text-xs text-purple-300">
-               Override delay between requests (in milliseconds). If set, takes precedence over speed override.
-               {{ devSyncDelay !== null ? `Current: ${devSyncDelay}ms (${(1000/devSyncDelay).toFixed(1)} tx/s)` : 'Using calculated delay from speed' }}
+               Display games that have been marked as retired in the catalog
              </p>
            </div>
           <div class="pt-2 border-t border-purple-700/50">
@@ -134,43 +95,6 @@
             </p>
           </div>
         </div>
-      </div>
-
-      <!-- How It Works Info -->
-      <div class="mb-6 rounded-md bg-blue-900/30 border border-blue-700 p-4">
-        <details class="cursor-pointer">
-          <summary class="text-sm font-medium text-blue-200 hover:text-blue-100 flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            How It Works
-          </summary>
-          <div class="mt-4 text-sm text-blue-100 space-y-3">
-            <div>
-              <h4 class="font-semibold text-blue-200 mb-1">1. Storage on Blockchain</h4>
-              <p class="text-blue-100/90">Programs are split into 64-byte chunks and stored as transaction data on the Nimiq blockchain. Each chunk contains a magic header, game ID, chunk index, and up to 51 bytes of program data.</p>
-            </div>
-            <div>
-              <h4 class="font-semibold text-blue-200 mb-1">2. Discover Games</h4>
-              <p class="text-blue-100/90">The frontend queries the catalog address to discover available games. Each game has multiple versions stored at dedicated cartridge addresses.</p>
-            </div>
-            <div>
-              <h4 class="font-semibold text-blue-200 mb-1">3. Download Cartridge</h4>
-              <p class="text-blue-100/90">When you select a game version, the app fetches the CART header and all DATA chunks from the cartridge address. The chunks are reassembled in order to reconstruct the original ZIP file.</p>
-            </div>
-            <div>
-              <h4 class="font-semibold text-blue-200 mb-1">4. Verification</h4>
-              <p class="text-blue-100/90">After downloading, the reconstructed file is automatically verified using SHA256. The computed hash is compared with the hash stored in the CART header to ensure data integrity and authenticity.</p>
-            </div>
-            <div>
-              <h4 class="font-semibold text-blue-200 mb-1">5. Run in Browser</h4>
-              <p class="text-blue-100/90">Once verified, you can run the program directly in your browser. DOS games use JS-DOS (a JavaScript port of DOSBox). The program runs entirely client-side - no server required!</p>
-            </div>
-            <div class="pt-2 border-t border-blue-700/50">
-              <p class="text-xs text-blue-200/80"><strong>Note:</strong> All data is stored permanently on the blockchain. Games are discovered from the catalog address and downloaded from cartridge addresses. Only transactions from the trusted publisher address are accepted.</p>
-            </div>
-          </div>
-        </details>
       </div>
 
       <!-- Error Message -->
@@ -215,7 +139,7 @@
 
           <!-- Emulator Container -->
           <EmulatorContainer
-            :platform="cartHeader?.platform || runJson?.platform || 'DOS'"
+            :platform="currentPlatform"
             :verified="verified"
             :loading="loading"
             :game-ready="gameReady"
@@ -271,6 +195,7 @@ const publisherAddress = ref('NQ89 4GDH 0J4U C2FY TU0Y TP1X J1H7 3HX3 PVSE') // 
 
 // Developer Mode
 const developerMode = ref(false)
+const showRetiredGames = ref(false)
 
 // Catalog and Cartridge
 const selectedPlatform = ref(null)
@@ -278,7 +203,7 @@ const selectedGame = ref(null)
 const selectedVersion = ref(null)
 
 // Catalog composable
-const catalog = useCatalog(rpcClient, catalogAddress, publisherAddress)
+const catalog = useCatalog(rpcClient, catalogAddress, publisherAddress, showRetiredGames)
 const { 
   loading: catalogLoading, 
   error: catalogError, 
@@ -316,12 +241,21 @@ watch([fileData, verified], async ([newFileData, newVerified]) => {
   }
 })
 
+// Emulator state (separate from catalog/cartridge loading)
+const emulatorLoading = ref(false)
+const emulatorError = ref(null)
+
 // Combined loading and error states
-const loading = computed(() => catalogLoading.value || cartridgeLoading.value)
-const error = computed(() => catalogError.value || cartridgeError.value)
+const loading = computed(() => catalogLoading.value || cartridgeLoading.value || emulatorLoading.value)
+const error = computed(() => catalogError.value || cartridgeError.value || emulatorError.value)
 
 // Handle platform selection
 function onPlatformChange(platform) {
+  // Stop emulator if running
+  if (gameReady.value) {
+    stopGame()
+  }
+  
   selectedPlatform.value = platform
   // Reset game selection when platform changes
   selectedGame.value = null
@@ -329,6 +263,7 @@ function onPlatformChange(platform) {
   fileData.value = null
   verified.value = false
   runJson.value = null
+  gameReady.value = false
   
   // Auto-select first game if platform is selected
   if (platform && catalogGames.value && catalogGames.value.length > 0) {
@@ -341,6 +276,11 @@ function onPlatformChange(platform) {
 
 // Handle game selection
 function onGameChange(game) {
+  // Stop emulator if running
+  if (gameReady.value) {
+    stopGame()
+  }
+  
   selectedGame.value = game
   if (game && game.versions.length > 0) {
     selectedVersion.value = game.versions[0] // Select latest version
@@ -351,6 +291,7 @@ function onGameChange(game) {
   fileData.value = null
   verified.value = false
   runJson.value = null
+  gameReady.value = false
 }
 
 // Handle catalog selection
@@ -385,11 +326,17 @@ function onCustomCatalogChange(address) {
 
 // Handle version selection
 function onVersionChange(version) {
+  // Stop emulator if running
+  if (gameReady.value) {
+    stopGame()
+  }
+  
   selectedVersion.value = version
   // Reset cartridge state
   fileData.value = null
   verified.value = false
   runJson.value = null
+  gameReady.value = false
 }
 
 // Watch for catalog address changes to reload catalog
@@ -440,14 +387,32 @@ watch(selectedVersion, async (newVersion) => {
 const gameReady = ref(false)
 const emulatorContainerRef = ref(null)
 
+// Helper to convert platform code to string
+function getPlatformName(platformCode) {
+  if (typeof platformCode === 'string') return platformCode
+  switch (platformCode) {
+    case 0: return 'DOS'
+    case 1: return 'GB'
+    case 2: return 'GBC'
+    default: return 'DOS'
+  }
+}
+
+// Computed platform name for EmulatorContainer
+const currentPlatform = computed(() => {
+  // Priority: run.json platform > cart header platform > default
+  if (runJson.value?.platform) {
+    return runJson.value.platform
+  }
+  if (cartHeader.value?.platform !== undefined) {
+    return getPlatformName(cartHeader.value.platform)
+  }
+  return 'DOS'
+})
+
 // Create a manifest-like object for DOS emulator compatibility
 const manifestForEmulator = computed(() => {
   if (!cartHeader.value && !runJson.value && !fileData.value) return null
-  
-  const platformCode = cartHeader.value?.platform
-  const platformName = platformCode === 0 ? 'DOS' : 
-                       platformCode === 1 ? 'GB' :
-                       platformCode === 2 ? 'GBC' : 'DOS'
   
   return {
     filename: runJson.value?.filename || 'game.zip',
@@ -457,15 +422,15 @@ const manifestForEmulator = computed(() => {
     network: 'mainnet',
     sender_address: publisherAddress.value || '',
     sha256: cartHeader.value?.sha256 || '',
-    platform: platformName,
+    platform: currentPlatform.value,
     executable: runJson.value?.executable || null,
     title: runJson.value?.title || selectedGame.value?.title || null
   }
 })
 
-// Emulator composables
-const dosEmulator = useDosEmulator(manifestForEmulator, fileData, verified, loading, error, gameReady)
-const gbEmulator = useGbEmulator(manifestForEmulator, fileData, verified, loading, error, gameReady)
+// Emulator composables (use emulatorLoading and emulatorError refs, not computed properties)
+const dosEmulator = useDosEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
+const gbEmulator = useGbEmulator(manifestForEmulator, fileData, verified, emulatorLoading, emulatorError, gameReady)
 
 // Wrapper functions that get the container element and call the composable
 async function runGame() {

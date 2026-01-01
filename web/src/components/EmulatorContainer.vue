@@ -14,6 +14,7 @@
     :verified="verified"
     :loading="loading"
     :game-ready="gameReady"
+    :platform="platform"
     @run-game="$emit('run-game')"
     @stop-game="$emit('stop-game')"
     @download-file="$emit('download-file')"

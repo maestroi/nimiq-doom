@@ -2,6 +2,6 @@
   "title": "Game Title",
   "filename": "game.zip",
   "executable": "GAME.EXE",
+  "rom": "game.gb",
   "platform": "DOS"
 }
-

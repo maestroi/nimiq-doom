@@ -5,7 +5,7 @@ import { parseCENT, hexToBytes, normalizeAddress } from '../utils/payloads.js'
  * Catalog loader composable
  * Fetches transactions from CATALOG_ADDRESS and parses CENT entries
  */
-export function useCatalog(rpcClient, catalogAddress, publisherAddress) {
+export function useCatalog(rpcClient, catalogAddress, publisherAddress, showRetiredGames = null) {
   const loading = ref(false)
   const error = ref(null)
   const games = ref([]) // Array of { appId, title, platform, versions: [...] }
@@ -83,12 +83,13 @@ export function useCatalog(rpcClient, catalogAddress, publisherAddress) {
         }
       }
       
-      // Group by app_id and sort versions (excluding retired apps)
+      // Group by app_id and sort versions (optionally excluding retired apps)
       const gamesMap = new Map()
+      const shouldShowRetired = showRetiredGames?.value ?? false
       
       for (const entry of entries) {
-        // Skip entire app if it's retired
-        if (retiredAppIds.has(entry.appId)) {
+        // Skip entire app if it's retired (unless showRetiredGames is enabled)
+        if (retiredAppIds.has(entry.appId) && !shouldShowRetired) {
           continue
         }
         
@@ -97,6 +98,7 @@ export function useCatalog(rpcClient, catalogAddress, publisherAddress) {
             appId: entry.appId,
             title: entry.title || `App ${entry.appId}`,
             platform: getPlatformName(entry.platform),
+            retired: retiredAppIds.has(entry.appId),
             versions: []
           })
         }
@@ -132,8 +134,8 @@ export function useCatalog(rpcClient, catalogAddress, publisherAddress) {
 
       games.value = Array.from(gamesMap.values())
       games.value.sort((a, b) => {
-        // Sort games by app_id
-        return a.appId - b.appId
+        // Sort games by app_id (descending - newest first)
+        return b.appId - a.appId
       })
 
       console.log(`Grouped into ${games.value.length} games`)

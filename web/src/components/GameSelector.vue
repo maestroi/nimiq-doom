@@ -3,15 +3,15 @@
     <div class="px-4 py-5 sm:px-6">
       <h2 class="text-xl font-semibold text-white">Select Game & Download</h2>
     </div>
-    <div class="px-4 py-5 sm:p-6">
-      <div class="space-y-4">
+    <div class="px-4 py-3 sm:p-4">
+      <div class="space-y-2">
         <!-- Platform Selection -->
         <div v-if="availablePlatforms.length > 0">
-          <label class="block text-sm font-medium text-gray-300 mb-2">Platform</label>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Platform</label>
           <select
             :value="selectedPlatform || ''"
             @change="onPlatformSelect($event.target.value)"
-            class="w-full text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+            class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1.5"
           >
             <option value="">-- Select Platform --</option>
             <option v-for="platform in availablePlatforms" :key="platform" :value="platform">
@@ -22,29 +22,29 @@
         
         <!-- Game Selection -->
         <div v-if="selectedPlatform || availablePlatforms.length === 0">
-          <label class="block text-sm font-medium text-gray-300 mb-2">
+          <label class="block text-xs font-medium text-gray-400 mb-1">
             Game
             <span v-if="selectedGame" class="ml-2 text-xs text-gray-500 font-normal">(ID: {{ selectedGame.appId }})</span>
           </label>
           <select
             :value="selectedGame ? selectedGame.appId : ''"
             @change="onGameSelect($event.target.value)"
-            class="w-full text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+            class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1.5"
           >
             <option value="">-- Select Game --</option>
             <option v-for="game in filteredGames" :key="game.appId" :value="game.appId">
-              {{ game.title }}
+              {{ game.title }}{{ game.retired ? ' (Retired)' : '' }}
             </option>
           </select>
         </div>
         
         <!-- Version Selection -->
         <div v-if="selectedGame && selectedGame.versions.length > 0">
-          <label class="block text-sm font-medium text-gray-300 mb-2">Version</label>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Version</label>
           <select
             :value="selectedVersion ? selectedVersion.semver.string : ''"
             @change="onVersionSelect($event.target.value)"
-            class="w-full text-sm rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+            class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1.5"
           >
             <option value="">-- Select Version --</option>
             <option v-for="version in selectedGame.versions" :key="version.semver.string" :value="version.semver.string">
@@ -53,14 +53,18 @@
           </select>
         </div>
         
+        <!-- Game Description/Title (when game selected) -->
+        <div v-if="selectedGame" class="pt-4 border-t border-gray-700 dark:border-white/10">
+          <div class="text-sm">
+            <h3 class="text-base font-semibold text-white mb-1">{{ runJson?.title || selectedGame?.title }}</h3>
+            <p v-if="runJson?.description" class="text-xs text-gray-300 mt-1">{{ runJson.description }}</p>
+          </div>
+        </div>
+        
         <!-- Cartridge Info (when version selected) -->
         <div v-if="selectedVersion && (cartHeader || runJson)" class="pt-4 border-t border-gray-700 dark:border-white/10">
           <h3 class="text-sm font-semibold text-white mb-3">Cartridge Info</h3>
           <dl class="space-y-2 text-sm">
-            <div v-if="runJson?.title">
-              <dt class="text-xs font-medium text-gray-400">Title</dt>
-              <dd class="mt-0.5 text-white font-semibold">{{ runJson.title }}</dd>
-            </div>
             <div v-if="platformName">
               <dt class="text-xs font-medium text-gray-400">Platform</dt>
               <dd class="mt-0.5 text-white">{{ platformName }}</dd>
@@ -185,6 +189,9 @@
           </svg>
           <svg v-else-if="verified && fileData" class="-ml-1 mr-2 h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <svg v-else class="-ml-1 mr-2 h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
           {{ verified && fileData ? 'Re-sync' : (loading ? 'Downloading...' : 'Download Cartridge') }}
         </button>
