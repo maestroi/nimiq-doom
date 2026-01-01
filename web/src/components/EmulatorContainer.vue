@@ -13,6 +13,20 @@
     v-else-if="platform === 'GB' || platform === 'GBC'"
     :verified="verified"
     :loading="loading"
+    :game-ready="gameReady"
+    :platform="platform"
+    @run-game="$emit('run-game')"
+    @stop-game="$emit('stop-game')"
+    @download-file="$emit('download-file')"
+    ref="emulatorRef"
+  />
+  <NesEmulator
+    v-else-if="platform === 'NES'"
+    :verified="verified"
+    :loading="loading"
+    :game-ready="gameReady"
+    @run-game="$emit('run-game')"
+    @stop-game="$emit('stop-game')"
     @download-file="$emit('download-file')"
     ref="emulatorRef"
   />
@@ -45,6 +59,7 @@
 import { ref } from 'vue'
 import DosEmulator from './emulators/DosEmulator.vue'
 import GameBoyEmulator from './emulators/GameBoyEmulator.vue'
+import NesEmulator from './emulators/NesEmulator.vue'
 
 const props = defineProps({
   platform: String,
