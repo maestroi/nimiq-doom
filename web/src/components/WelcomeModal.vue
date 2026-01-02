@@ -198,11 +198,94 @@
               <span>Press <kbd class="px-1.5 py-0.5 bg-gray-700 rounded text-gray-300 font-mono">F11</kbd> for fullscreen, <kbd class="px-1.5 py-0.5 bg-gray-700 rounded text-gray-300 font-mono">Ctrl+R</kbd> to reset</span>
             </div>
 
+            <!-- Legal Disclaimer (Expandable) -->
+            <div class="mb-6">
+              <button 
+                @click="showDisclaimer = !showDisclaimer"
+                class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300 transition-colors w-full"
+              >
+                <svg 
+                  class="w-4 h-4 transition-transform duration-200" 
+                  :class="{ 'rotate-90': showDisclaimer }"
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+                <span class="font-medium">Legal Disclaimer</span>
+              </button>
+              
+              <Transition
+                enter-active-class="transition ease-out duration-200"
+                enter-from-class="opacity-0 -translate-y-2 max-h-0"
+                enter-to-class="opacity-100 translate-y-0 max-h-[800px]"
+                leave-active-class="transition ease-in duration-150"
+                leave-from-class="opacity-100 translate-y-0 max-h-[800px]"
+                leave-to-class="opacity-0 -translate-y-2 max-h-0"
+              >
+                <div v-if="showDisclaimer" class="mt-4 space-y-3 overflow-hidden">
+                  <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+                    <div class="space-y-3 text-xs text-gray-400 leading-relaxed">
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Educational & Research Purposes</p>
+                        <p>This project is for educational and research purposes only. The platform demonstrates blockchain-based game storage and emulation technology.</p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Legal Ownership Required</p>
+                        <p>Users are responsible for ensuring they have the legal right to use any game files. <strong class="text-gray-300">Only use games you legally own or that are in the public domain.</strong></p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Anti-Piracy Statement</p>
+                        <p>The developers do not condone piracy and are not responsible for any misuse of this software. We do not host, distribute, or encourage the use of copyrighted material without proper authorization.</p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Copyright & Trademark Notice</p>
+                        <p>All game titles, characters, graphics, and other content displayed on this platform are the property of their respective copyright holders. This service is provided for educational and preservation purposes only.</p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">No Warranty</p>
+                        <p>This software is provided "as is" without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. We do not guarantee that the service will be uninterrupted, secure, or error-free.</p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Blockchain & Data</p>
+                        <p>Games are stored on the Nimiq blockchain. We are not responsible for any loss of data, funds, or other issues related to blockchain transactions or network connectivity.</p>
+                      </div>
+                      <div>
+                        <p class="text-gray-300 font-semibold mb-1">Limitation of Liability</p>
+                        <p>In no event shall we be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising out of or relating to your use of this service.</p>
+                      </div>
+                      <div class="pt-2 border-t border-gray-700/50">
+                        <p class="text-gray-500 italic">By using this service, you acknowledge that you have read, understood, and agree to be bound by this disclaimer.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+
+            <!-- Legal Acceptance -->
+            <div class="mb-6 bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+              <label class="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  v-model="legalAccepted"
+                  class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500 focus:ring-2 focus:ring-offset-0 cursor-pointer"
+                />
+                <div class="flex-1">
+                  <p class="text-sm text-gray-300 leading-relaxed">
+                    I have read and agree to the <button @click.stop="showDisclaimer = true" class="text-amber-400 hover:text-amber-300 underline font-medium">Legal Disclaimer</button> above. I understand that this service is for educational purposes only and I will only use games I legally own or that are in the public domain.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             <!-- Actions -->
             <div class="flex flex-col sm:flex-row gap-3">
               <button
                 @click="startPlaying"
-                class="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold shadow-lg shadow-amber-500/25 hover:from-amber-400 hover:to-orange-400 transition-all duration-200 hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-[0.98]"
+                :disabled="!legalAccepted"
+                class="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold shadow-lg shadow-amber-500/25 hover:from-amber-400 hover:to-orange-400 transition-all duration-200 hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -224,35 +307,61 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 
 const STORAGE_KEY = 'nimiq-games-welcome-dismissed'
+const LEGAL_ACCEPTANCE_KEY = 'nimiq-games-legal-accepted'
 
 const isOpen = ref(false)
 const showAdvanced = ref(false)
+const showDisclaimer = ref(false)
+const legalAccepted = ref(false)
 
 const emit = defineEmits(['close'])
 
+// Watch for legal acceptance changes and save to localStorage
+watch(legalAccepted, (newValue) => {
+  if (newValue) {
+    localStorage.setItem(LEGAL_ACCEPTANCE_KEY, 'true')
+  }
+})
+
 onMounted(() => {
+  // Check if user has accepted legal disclaimer
+  const legalAcceptedStored = localStorage.getItem(LEGAL_ACCEPTANCE_KEY)
+  if (legalAcceptedStored === 'true') {
+    legalAccepted.value = true
+  }
+  
   // Check if user has dismissed the modal before
   const dismissed = localStorage.getItem(STORAGE_KEY)
   if (!dismissed) {
     // Small delay for better UX
     setTimeout(() => {
       isOpen.value = true
+      // Auto-expand disclaimer if not accepted yet
+      if (!legalAccepted.value) {
+        showDisclaimer.value = true
+      }
     }, 500)
   }
 })
 
 function startPlaying() {
+  if (!legalAccepted.value) {
+    return
+  }
   isOpen.value = false
   emit('close')
 }
 
 function dismiss() {
-  localStorage.setItem(STORAGE_KEY, 'true')
-  isOpen.value = false
-  emit('close')
+  // Only dismiss if legal is accepted
+  if (legalAccepted.value) {
+    localStorage.setItem(STORAGE_KEY, 'true')
+    isOpen.value = false
+    emit('close')
+  }
 }
 
 // Expose method to show modal again (e.g., from help button)
