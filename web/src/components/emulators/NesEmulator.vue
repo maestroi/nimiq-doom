@@ -14,6 +14,9 @@
       </div>
       <!-- Action Buttons - Small Icon Buttons -->
       <div class="flex items-center gap-2">
+        <!-- Keyboard Shortcuts Help -->
+        <KeyboardShortcutsHelp />
+        
         <button
           v-if="!gameReady"
           @click="$emit('run-game')"
@@ -88,6 +91,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import KeyboardShortcutsHelp from '../KeyboardShortcutsHelp.vue'
 
 const props = defineProps({
   verified: Boolean,

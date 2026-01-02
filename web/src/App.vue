@@ -112,7 +112,16 @@
         </div>
       </div>
 
-      <!-- Main Content: Game Selector + Emulator side by side, Sync below -->
+      <!-- Recently Played - Compact horizontal bar -->
+      <RecentlyPlayed 
+        v-if="recentGames.length > 0 && !catalogLoading"
+        :recent-games="recentGames"
+        @select="selectRecentGame"
+        @clear="clearRecentGames"
+        class="mb-4"
+      />
+      
+      <!-- Main Content: Game Selector + Emulator side by side -->
       <div class="space-y-6 mb-6">
         <!-- Top Row: Game Selector + Emulator -->
         <div class="grid grid-cols-1 lg:grid-cols-[0.6fr_1.4fr] gap-6">
@@ -128,6 +137,7 @@
             :verified="verified"
             :file-data="fileData"
             :loading="loading"
+            :catalog-loading="catalogLoading"
             :error="error"
             :progress-percent="cartridgeProgressPercent"
             @update:platform="onPlatformChange"
@@ -147,6 +157,7 @@
             @stop-game="stopGame"
             @download-file="downloadFile"
             ref="emulatorContainerRef"
+            class="emulator-container"
           />
         </div>
       </div>
@@ -161,7 +172,10 @@ import { NimiqRPC } from './nimiq-rpc.js'
 import Header from './components/Header.vue'
 import EmulatorContainer from './components/EmulatorContainer.vue'
 import GameSelector from './components/GameSelector.vue'
+import RecentlyPlayed from './components/RecentlyPlayed.vue'
 import { useCatalog } from './composables/useCatalog.js'
+import { useRecentlyPlayed } from './composables/useRecentlyPlayed.js'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts.js'
 import { useCartridge } from './composables/useCartridge.js'
 import { useDosEmulator } from './composables/useDosEmulator.js'
 import { useGbEmulator } from './composables/useGbEmulator.js'
@@ -267,8 +281,56 @@ const emulatorError = ref(null)
 const loading = computed(() => catalogLoading.value || cartridgeLoading.value || emulatorLoading.value)
 const error = computed(() => catalogError.value || cartridgeError.value || emulatorError.value)
 
+// Recently Played
+const { recentGames, addRecentGame, clearRecentGames } = useRecentlyPlayed()
+
+// Select a recently played game
+async function selectRecentGame(recentGame) {
+  // Stop any running emulator first
+  if (gameReady.value) {
+    await stopGame()
+  }
+  
+  // Find the game in catalog
+  const game = catalogGames.value?.find(g => g.appId === recentGame.appId)
+  if (game) {
+    selectedPlatform.value = game.platform
+    await onGameChange(game)
+    // Auto-load the cartridge
+    setTimeout(() => {
+      loadCartridge()
+    }, 100)
+  }
+}
+
+// Keyboard shortcuts
+const shortcutsEnabled = computed(() => gameReady.value)
+const { shortcuts, toggleFullscreen, isPaused, isMuted } = useKeyboardShortcuts({
+  enabled: shortcutsEnabled,
+  onFullscreen: (isFullscreen) => {
+    console.log('Fullscreen:', isFullscreen)
+  },
+  onReset: () => {
+    console.log('Reset game requested')
+    // Could implement emulator reset here
+  },
+  onPause: (paused) => {
+    console.log('Pause:', paused)
+    // Could implement pause here
+  },
+  onMute: (muted) => {
+    console.log('Mute:', muted)
+    // Could implement mute here
+  }
+})
+
 // Handle platform selection
-function onPlatformChange(platform) {
+async function onPlatformChange(platform) {
+  // Stop any running emulator first
+  if (gameReady.value) {
+    await stopGame()
+  }
+  
   selectedPlatform.value = platform
   // Reset game selection when platform changes
   selectedGame.value = null
@@ -281,13 +343,18 @@ function onPlatformChange(platform) {
   if (platform && catalogGames.value && catalogGames.value.length > 0) {
     const filteredGames = catalogGames.value.filter(game => game.platform === platform)
     if (filteredGames.length > 0) {
-      onGameChange(filteredGames[0])
+      await onGameChange(filteredGames[0])
     }
   }
 }
 
 // Handle game selection
-function onGameChange(game) {
+async function onGameChange(game) {
+  // Stop any running emulator first
+  if (gameReady.value) {
+    await stopGame()
+  }
+  
   selectedGame.value = game
   if (game && game.versions.length > 0) {
     selectedVersion.value = game.versions[0] // Select latest version
@@ -331,7 +398,12 @@ function onCustomCatalogChange(address) {
 }
 
 // Handle version selection
-function onVersionChange(version) {
+async function onVersionChange(version) {
+  // Stop any running emulator first
+  if (gameReady.value) {
+    await stopGame()
+  }
+  
   selectedVersion.value = version
   // Reset cartridge state
   fileData.value = null
@@ -453,6 +525,17 @@ async function runGame() {
     await nesEmulator.runGame(containerElement)
   } else {
     error.value = `Emulator for platform "${platform}" not yet implemented`
+  }
+  
+  // Add to recently played
+  if (selectedGame.value && selectedVersion.value) {
+    addRecentGame({
+      appId: selectedGame.value.appId,
+      title: selectedGame.value.title,
+      platform: selectedGame.value.platform,
+      cartridgeAddress: selectedVersion.value.cartridgeAddress,
+      version: selectedVersion.value.semver?.string
+    })
   }
 }
 

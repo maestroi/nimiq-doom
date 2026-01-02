@@ -4,6 +4,9 @@
       <h2 class="text-xl font-semibold text-white">DOS Emulator</h2>
       <!-- Action Buttons - Small Icon Buttons -->
       <div class="flex items-center gap-2">
+        <!-- Keyboard Shortcuts Help -->
+        <KeyboardShortcutsHelp />
+        
         <button
           v-if="!gameReady"
           @click="$emit('run-game')"
@@ -46,7 +49,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
+import KeyboardShortcutsHelp from '../KeyboardShortcutsHelp.vue'
 
 const props = defineProps({
   verified: Boolean,

@@ -4,7 +4,34 @@
       <h2 class="text-xl font-semibold text-white">Select Game & Download</h2>
     </div>
     <div class="px-4 py-3 sm:p-4">
-      <div class="space-y-2">
+      <!-- Loading Skeleton -->
+      <LoadingSkeleton v-if="catalogLoading" :show-cards="true" :card-count="3" />
+      
+      <div v-else class="space-y-2">
+        <!-- Search Filter -->
+        <div v-if="games && games.length > 3" class="mb-3">
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search games..."
+              class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 pl-8 pr-8 py-1.5"
+            />
+            <button 
+              v-if="searchQuery"
+              @click="searchQuery = ''"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
         <!-- Platform Selection -->
         <div v-if="availablePlatforms.length > 0">
           <label class="block text-xs font-medium text-gray-400 mb-1">Platform</label>
@@ -69,15 +96,46 @@
               <dt class="text-xs font-medium text-gray-400">Platform</dt>
               <dd class="mt-0.5 text-white">{{ platformName }}</dd>
             </div>
+            <!-- Cartridge Address with Copy -->
+            <div v-if="selectedVersion.cartridgeAddress">
+              <dt class="text-xs font-medium text-gray-400">Cartridge Address</dt>
+              <dd class="mt-0.5 text-xs text-white font-mono break-words flex items-center gap-1">
+                <span class="truncate" :title="selectedVersion.cartridgeAddress">{{ formatHash(selectedVersion.cartridgeAddress) }}</span>
+                <button 
+                  @click="handleCopy(selectedVersion.cartridgeAddress, 'address')"
+                  class="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                  :title="copiedField === 'address' ? 'Copied!' : 'Copy address'"
+                >
+                  <svg v-if="copiedField === 'address'" class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  <svg v-else class="w-3 h-3 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </dd>
+            </div>
             <div v-if="cartHeader">
               <dt class="text-xs font-medium text-gray-400">Total Size</dt>
               <dd class="mt-0.5 text-sm text-white">{{ formatBytes(cartHeader.totalSize) }}</dd>
             </div>
             <div v-if="cartHeader">
               <dt class="text-xs font-medium text-gray-400">SHA256</dt>
-              <dd class="mt-0.5 text-xs text-white font-mono break-words flex items-center gap-2">
-                <span>{{ formatHash(cartHeader.sha256) }}</span>
-                <span v-if="verified" class="inline-flex items-center text-green-400" title="SHA256 verified">
+              <dd class="mt-0.5 text-xs text-white font-mono break-words flex items-center gap-1">
+                <span class="truncate">{{ formatHash(cartHeader.sha256) }}</span>
+                <button 
+                  @click="handleCopy(cartHeader.sha256, 'sha256')"
+                  class="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                  :title="copiedField === 'sha256' ? 'Copied!' : 'Copy hash'"
+                >
+                  <svg v-if="copiedField === 'sha256'" class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  <svg v-else class="w-3 h-3 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+                <span v-if="verified" class="inline-flex items-center text-green-400 flex-shrink-0" title="SHA256 verified">
                   <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                   </svg>
@@ -156,9 +214,14 @@
               <span class="text-lg font-bold text-white">{{ Math.round(combinedProgress) }}%</span>
               <span class="text-xs text-gray-400 ml-1">Complete</span>
             </div>
-            <div v-if="syncProgress.rate > 0" class="text-center pt-1">
-              <span class="text-xs text-gray-400">Speed: </span>
-              <span class="text-xs text-white font-medium">{{ syncProgress.rate.toFixed(1) }} chunks/s</span>
+            <div v-if="syncProgress.rate > 0" class="text-center pt-1 flex items-center justify-center gap-3">
+              <span>
+                <span class="text-xs text-gray-400">Speed: </span>
+                <span class="text-xs text-white font-medium">{{ syncProgress.rate.toFixed(1) }} chunks/s</span>
+              </span>
+              <span v-if="estimatedTimeRemaining && syncProgress.chunksFound < syncProgress.expectedChunks" class="text-xs text-gray-400">
+                ETA: <span class="text-amber-400 font-medium">{{ estimatedTimeRemaining }}</span>
+              </span>
             </div>
           </div>
           <div v-else class="space-y-2">
@@ -222,8 +285,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { formatBytes, formatHash } from '../utils.js'
+import { computed, ref } from 'vue'
+import { formatBytes, formatHash, copyToClipboard, estimateDownloadTime, formatNimiqAddress } from '../utils.js'
+import LoadingSkeleton from './LoadingSkeleton.vue'
 
 const props = defineProps({
   games: Array,
@@ -236,9 +300,26 @@ const props = defineProps({
   verified: Boolean,
   fileData: Object,
   loading: Boolean,
+  catalogLoading: Boolean,
   error: String,
   progressPercent: Number
 })
+
+// Search query for filtering games
+const searchQuery = ref('')
+
+// Copy feedback state
+const copiedField = ref(null)
+
+async function handleCopy(text, field) {
+  const success = await copyToClipboard(text)
+  if (success) {
+    copiedField.value = field
+    setTimeout(() => {
+      copiedField.value = null
+    }, 2000)
+  }
+}
 
 const emit = defineEmits(['update:platform', 'update:game', 'update:version', 'load-cartridge', 'clear-cache'])
 
@@ -254,11 +335,35 @@ const availablePlatforms = computed(() => {
   return Array.from(platforms).sort()
 })
 
-// Filter games by selected platform
+// Filter games by selected platform and search query
 const filteredGames = computed(() => {
   if (!props.games || props.games.length === 0) return []
-  if (!props.selectedPlatform) return props.games
-  return props.games.filter(game => game.platform === props.selectedPlatform)
+  
+  let filtered = props.games
+  
+  // Filter by platform
+  if (props.selectedPlatform) {
+    filtered = filtered.filter(game => game.platform === props.selectedPlatform)
+  }
+  
+  // Filter by search query
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase().trim()
+    filtered = filtered.filter(game => 
+      game.title?.toLowerCase().includes(query) ||
+      game.platform?.toLowerCase().includes(query)
+    )
+  }
+  
+  return filtered
+})
+
+// Estimated time remaining for download
+const estimatedTimeRemaining = computed(() => {
+  if (!props.syncProgress || !props.cartHeader) return null
+  const remaining = props.syncProgress.expectedChunks - props.syncProgress.chunksFound
+  if (remaining <= 0 || !props.syncProgress.rate) return null
+  return estimateDownloadTime(remaining, props.syncProgress.rate)
 })
 
 function onPlatformSelect(platform) {
