@@ -7,17 +7,35 @@ CLI tool for uploading games and files to the Nimiq blockchain using the cartrid
 ### Quick Install (Linux/macOS)
 
 ```bash
+cd uploader
+
 # Build and install to ~/bin (no sudo required)
 make install-user
+```
 
-# Or install system-wide (may require sudo)
-make install
+After installation, add `~/bin` to your PATH (if not already):
+
+```bash
+# For zsh (macOS default)
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash (Linux default)
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### System-wide Install
+
+```bash
+# Install to /usr/local/bin (requires sudo)
+sudo make install
 ```
 
 ### Manual Build
 
 ```bash
-# Just build
+# Just build (creates ./nimiq-uploader)
 make build
 
 # Or with Go directly
@@ -31,32 +49,74 @@ nimiq-uploader version
 nimiq-uploader config
 ```
 
+## RPC Configuration
+
+The uploader needs a Nimiq RPC endpoint to communicate with the blockchain. **You should run your own Nimiq node** for uploading.
+
+### RPC URL Priority (highest to lowest)
+
+1. `--rpc-url` flag on command line
+2. `NIMIQ_RPC_URL` environment variable
+3. `RPC_URL` in credentials file
+4. Default: `http://localhost:8648`
+
+### Setting Up RPC
+
+**Option 1: Run your own Nimiq node (recommended)**
+```bash
+# See https://github.com/nimiq/core-rs-albatross for setup
+# Default RPC port is 8648
+```
+
+**Option 2: Set in credentials file**
+```bash
+# Edit ~/.config/nimiq-uploader/account_credentials.txt
+RPC_URL=http://your-node-ip:8648
+```
+
+**Option 3: Environment variable**
+```bash
+export NIMIQ_RPC_URL="http://your-node-ip:8648"
+```
+
+**Option 4: Per-command flag**
+```bash
+nimiq-uploader account balance --rpc-url http://your-node-ip:8648
+```
+
 ## Quick Start
 
 ### 1. Create Account
 
 ```bash
-# Save credentials locally (./account_credentials.txt)
-nimiq-uploader account create
-
-# Or save globally (~/.config/nimiq-uploader/account_credentials.txt)
+# Save credentials globally (~/.config/nimiq-uploader/)
 nimiq-uploader account create --global
+
+# Or save locally (./account_credentials.txt)
+nimiq-uploader account create
 ```
 
-### 2. Fund the Address
+### 2. Configure RPC (if not localhost)
+
+Edit `~/.config/nimiq-uploader/account_credentials.txt` and set:
+```
+RPC_URL=http://your-nimiq-node:8648
+```
+
+### 3. Fund the Address
 
 Send some NIM to the address shown (mainnet).
 
-### 3. Check Balance
+### 4. Check Balance
 
 ```bash
 nimiq-uploader account balance
 ```
 
-### 4. Upload a Game
+### 5. Upload a Game
 
 ```bash
-# Package your game first (creates a ZIP with run.json)
+# Package your game first
 nimiq-uploader package --dir /path/to/game --output game.zip --title "My Game" --platform DOS
 
 # Upload to blockchain
@@ -79,7 +139,7 @@ nimiq-uploader upload-cartridge \
 | `account` | Manage Nimiq accounts |
 | `package` | Package game files into a ZIP |
 | `retire-app` | Mark an app as retired in the catalog |
-| `config` | Show configuration paths |
+| `config` | Show configuration paths and current settings |
 | `version` | Show version information |
 
 ### Account Subcommands
@@ -87,6 +147,7 @@ nimiq-uploader upload-cartridge \
 | Command | Description |
 |---------|-------------|
 | `account create` | Create a new account |
+| `account create --global` | Create account and save to global config |
 | `account import` | Import an account by private key |
 | `account status` | Check account status |
 | `account balance` | Check account balance |
@@ -97,11 +158,13 @@ nimiq-uploader upload-cartridge \
 
 ## Configuration
 
+### Config Locations
+
 Credentials are loaded from (in order):
 1. `./account_credentials.txt` (current directory)
 2. `~/.config/nimiq-uploader/account_credentials.txt` (global config)
 
-### View Configuration
+### View Current Configuration
 
 ```bash
 nimiq-uploader config
@@ -109,15 +172,24 @@ nimiq-uploader config
 
 ### Credentials File Format
 
-```
-ADDRESS=NQ00 ...
+```ini
+# Nimiq Account Credentials
+ADDRESS=NQ00 XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
 PUBLIC_KEY=...
 PRIVATE_KEY=...
 PASSPHRASE=...
 RPC_URL=http://localhost:8648
 ```
 
-**Keep this file secure!** It contains your private key.
+⚠️ **Keep this file secure!** It contains your private key.
+
+### Load Credentials into Shell
+
+```bash
+source load-credentials.sh
+```
+
+This sets environment variables: `ADDRESS`, `PRIVATE_KEY`, `PASSPHRASE`, `NIMIQ_RPC_URL`
 
 ## Upload Examples
 
@@ -161,7 +233,9 @@ nimiq-uploader upload-cartridge \
   --dry-run
 ```
 
-## Platform Codes
+## Reference
+
+### Platform Codes
 
 | Code | Platform |
 |------|----------|
@@ -170,14 +244,14 @@ nimiq-uploader upload-cartridge \
 | 2 | Game Boy Color |
 | 3 | NES |
 
-## Catalog Addresses
+### Catalog Addresses
 
 | Shortcut | Address |
 |----------|---------|
 | `main` | NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948 |
 | `test` | NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0 |
 
-## Progress and Resumption
+### Progress and Resumption
 
 Upload progress is saved to `upload_cartridge_<app_id>_<cartridge_id>.json`. If interrupted, run the same command again to resume.
 
@@ -186,9 +260,9 @@ Upload progress is saved to `upload_cartridge_<app_id>_<cartridge_id>.json`. If 
 ```bash
 make              # Build
 make build        # Build
-make build-all    # Build for all platforms
-make install      # Install to /usr/local/bin
-make install-user # Install to ~/bin
+make build-all    # Build for linux/darwin amd64/arm64
+make install      # Install to /usr/local/bin (needs sudo)
+make install-user # Install to ~/bin (no sudo)
 make config       # Set up config directory
 make uninstall    # Remove installed binary
 make clean        # Clean build artifacts
@@ -198,8 +272,69 @@ make help         # Show help
 ## Requirements
 
 - Go 1.21+
-- Nimiq RPC endpoint (run your own node or set RPC_URL in credentials)
+- Nimiq RPC endpoint (run your own node)
 - Account funded with NIM
+
+## Troubleshooting
+
+### "command not found: nimiq-uploader"
+
+Add `~/bin` to your PATH:
+```bash
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### "failed to check consensus" or connection errors
+
+Make sure your Nimiq node is running and accessible:
+```bash
+curl http://localhost:8648 -d '{"jsonrpc":"2.0","method":"consensus","id":1}'
+```
+
+### "account is locked"
+
+Unlock your account before sending transactions:
+```bash
+nimiq-uploader account unlock --passphrase "your-passphrase"
+```
+
+## Web Frontend
+
+The web frontend is in the `web/` directory. It's a Vue 3 app that connects directly to Nimiq RPC endpoints.
+
+### Running the Web Frontend
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Access at `http://localhost:5173`
+
+### Running with Docker
+
+```bash
+# From project root
+docker compose up -d
+```
+
+Access at `http://localhost:5174`
+
+### Building for Production
+
+```bash
+cd web
+npm run build
+# Output in web/dist/
+```
+
+The built files can be deployed to any static hosting (GitHub Pages, Netlify, Vercel, etc.).
+
+**Live Demo:** https://maestroi.github.io/nimiq-doom/
+
+See the main [README.md](../README.md) for full documentation on the web frontend and emulator integration.
 
 ## Legacy Commands
 
