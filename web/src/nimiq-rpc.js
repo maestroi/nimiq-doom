@@ -3,40 +3,95 @@ export class NimiqRPC {
   constructor(url) {
     this.url = url
     this.id = 1
+    this.maxRetries = 3
+    this.baseDelay = 1000 // 1 second base delay for exponential backoff
+  }
+
+  /**
+   * Check if an error is transient (worth retrying)
+   */
+  isTransientError(error) {
+    // Network errors (fetch failed)
+    if (error.name === 'TypeError' && error.message.includes('fetch')) return true
+    // Network-related messages
+    if (error.message.includes('network') || error.message.includes('Network')) return true
+    if (error.message.includes('Failed to fetch')) return true
+    if (error.message.includes('timeout') || error.message.includes('Timeout')) return true
+    // HTTP 5xx errors (server issues)
+    if (error.message.includes('HTTP 5')) return true
+    // HTTP 429 (rate limited)
+    if (error.message.includes('HTTP 429')) return true
+    return false
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   async call(method, params = {}) {
-    const request = {
-      jsonrpc: '2.0',
-      id: this.id++,
-      method: method,
-      params: params
+    let lastError = null
+    
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const request = {
+          jsonrpc: '2.0',
+          id: this.id++,
+          method: method,
+          params: params
+        }
+
+        const response = await fetch(this.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(request)
+        })
+
+        if (!response.ok) {
+          const error = new Error(`HTTP ${response.status}: ${response.statusText}`)
+          // Retry on 5xx or 429 errors
+          if (response.status >= 500 || response.status === 429) {
+            throw error
+          }
+          // Don't retry on 4xx (except 429) - these are client errors
+          throw error
+        }
+
+        const data = await response.json()
+
+        if (data.error) {
+          throw new Error(`RPC error: ${data.error.message || JSON.stringify(data.error)}`)
+        }
+
+        // Handle nested data structure (some RPC endpoints wrap in {data: ...})
+        if (data.result && typeof data.result === 'object' && 'data' in data.result) {
+          return data.result.data
+        }
+
+        return data.result
+        
+      } catch (error) {
+        lastError = error
+        
+        // Check if we should retry
+        if (attempt < this.maxRetries - 1 && this.isTransientError(error)) {
+          const delay = this.baseDelay * Math.pow(2, attempt) // Exponential backoff: 1s, 2s, 4s
+          console.warn(`RPC call failed (attempt ${attempt + 1}/${this.maxRetries}), retrying in ${delay}ms...`, error.message)
+          await this.sleep(delay)
+          continue
+        }
+        
+        // Either non-transient error or max retries reached
+        throw error
+      }
     }
-
-    const response = await fetch(this.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(request)
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-
-    if (data.error) {
-      throw new Error(`RPC error: ${data.error.message || JSON.stringify(data.error)}`)
-    }
-
-    // Handle nested data structure (some RPC endpoints wrap in {data: ...})
-    if (data.result && typeof data.result === 'object' && 'data' in data.result) {
-      return data.result.data
-    }
-
-    return data.result
+    
+    // Should never reach here, but just in case
+    throw lastError
   }
 
   async getTransactionByHash(txHash) {

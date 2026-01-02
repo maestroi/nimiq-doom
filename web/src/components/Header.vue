@@ -7,29 +7,17 @@
             <h1 class="text-xl md:text-2xl font-bold text-white">🎮 Nimiq: Retro Games Onchain</h1>
             <p class="mt-0.5 text-xs text-gray-400">Download retro games from the blockchain and play them in your browser!</p>
           </div>
-          <!-- How It Works - Compact Info Button -->
-          <div class="relative group">
-            <button
-              class="text-gray-400 hover:text-gray-300 transition-colors"
-              title="How It Works"
-            >
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </button>
-            <!-- Tooltip/Info Box -->
-            <div class="absolute right-0 top-8 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-4 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-              <h3 class="text-sm font-semibold text-white mb-3">How It Works</h3>
-              <div class="text-xs text-gray-300 space-y-2">
-                <p><strong class="text-gray-200">1. Storage:</strong> Games are split into 64-byte chunks stored on the Nimiq blockchain.</p>
-                <p><strong class="text-gray-200">2. Discover:</strong> Frontend queries the catalog address to find available games.</p>
-                <p><strong class="text-gray-200">3. Download:</strong> CART header and DATA chunks are fetched and reassembled into ZIP.</p>
-                <p><strong class="text-gray-200">4. Verify:</strong> SHA256 hash verification ensures data integrity.</p>
-                <p><strong class="text-gray-200">5. Run:</strong> Games run directly in your browser using JS-DOS (DOSBox).</p>
-                <p class="pt-2 border-t border-gray-700 text-gray-400">All data is stored permanently on-chain. Only transactions from the trusted publisher are accepted.</p>
-              </div>
-            </div>
-          </div>
+          <!-- Help Button - Opens Welcome Modal -->
+          <button
+            @click="$emit('show-help')"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg transition-colors border border-amber-500/20"
+            title="How It Works"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="hidden sm:inline">How It Works</span>
+          </button>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
           <!-- RPC Endpoint Selection -->
@@ -125,7 +113,8 @@ const emit = defineEmits([
   'update:custom-catalog',
   'update:game',
   'update:version',
-  'refresh-catalog'
+  'refresh-catalog',
+  'show-help'
 ])
 
 function onGameSelect(appId) {

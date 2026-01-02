@@ -1,160 +1,209 @@
-# Nimiq DOOM Uploader
+# Nimiq Uploader
 
-CLI tool for chunking files and uploading them to the Nimiq blockchain as DOOM chunks.
+CLI tool for uploading games and files to the Nimiq blockchain using the cartridge format (CART/DATA/CENT).
+
+## Installation
+
+### Quick Install (Linux/macOS)
+
+```bash
+# Build and install to ~/bin (no sudo required)
+make install-user
+
+# Or install system-wide (may require sudo)
+make install
+```
+
+### Manual Build
+
+```bash
+# Just build
+make build
+
+# Or with Go directly
+go build -o nimiq-uploader .
+```
+
+### Verify Installation
+
+```bash
+nimiq-uploader version
+nimiq-uploader config
+```
 
 ## Quick Start
 
-### Build
+### 1. Create Account
 
 ```bash
-go build -o uploader .
+# Save credentials locally (./account_credentials.txt)
+nimiq-uploader account create
+
+# Or save globally (~/.config/nimiq-uploader/account_credentials.txt)
+nimiq-uploader account create --global
 ```
 
-### Create Account and Get Started
+### 2. Fund the Address
 
-1. **Create account** (generates random passphrase and saves credentials to `account_credentials.txt`):
-   ```bash
-   ./uploader account create
-   ```
-   This automatically generates a secure random passphrase and saves it in the credentials file.
+Send some NIM to the address shown (mainnet).
 
-2. **Fund the address** (send some NIM to the address shown - mainnet)
+### 3. Check Balance
 
-3. **Load credentials**:
-   ```bash
-   source load-credentials.sh
-   ```
+```bash
+nimiq-uploader account balance
+```
 
-4. **Unlock account** (required before sending transactions):
-   ```bash
-   ./uploader account unlock --passphrase "$PASSPHRASE"
-   ```
-   Or use the passphrase from the credentials file directly.
+### 4. Upload a Game
 
-5. **Wait for funds**:
-   ```bash
-   ./uploader account wait-funds
-   ```
+```bash
+# Package your game first (creates a ZIP with run.json)
+nimiq-uploader package --dir /path/to/game --output game.zip --title "My Game" --platform DOS
 
-6. **Upload your file**:
-   ```bash
-   ./uploader upload --file yourfile.bin --game-id 1
-   ```
-   Data transactions will be sent to the default receiver address (`NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES`). You can override with `--receiver`.
-
-### Quick Usage
-
-All commands support loading the default address from `account_credentials.txt` if you don't specify `--address`.
+# Upload to blockchain
+nimiq-uploader upload-cartridge \
+  --file game.zip \
+  --title "My Game" \
+  --semver 1.0.0 \
+  --platform 0 \
+  --catalog-addr main \
+  --generate-cartridge-addr
+```
 
 ## Commands
 
-### Account Management
+### Main Commands
 
-#### Check Account Status
+| Command | Description |
+|---------|-------------|
+| `upload-cartridge` | Upload a file using CART/DATA/CENT format |
+| `account` | Manage Nimiq accounts |
+| `package` | Package game files into a ZIP |
+| `retire-app` | Mark an app as retired in the catalog |
+| `config` | Show configuration paths |
+| `version` | Show version information |
+
+### Account Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `account create` | Create a new account |
+| `account import` | Import an account by private key |
+| `account status` | Check account status |
+| `account balance` | Check account balance |
+| `account unlock` | Unlock an account |
+| `account lock` | Lock an account |
+| `account wait-funds` | Wait until account has minimum balance |
+| `account consensus` | Check if node has consensus |
+
+## Configuration
+
+Credentials are loaded from (in order):
+1. `./account_credentials.txt` (current directory)
+2. `~/.config/nimiq-uploader/account_credentials.txt` (global config)
+
+### View Configuration
+
 ```bash
-./uploader account status --address "NQ00 ..."
+nimiq-uploader config
 ```
 
-#### Check Balance
-```bash
-./uploader account balance --address "NQ00 ..."
+### Credentials File Format
+
 ```
-
-#### Wait for Funds
-```bash
-./uploader account wait-funds --address "NQ00 ..." --min-nim 0.001
+ADDRESS=NQ00 ...
+PUBLIC_KEY=...
+PRIVATE_KEY=...
+PASSPHRASE=...
+RPC_URL=http://localhost:8648
 ```
-
-#### Create New Account
-```bash
-./uploader account create
-```
-This automatically:
-- Creates a new account via RPC
-- Generates a secure random passphrase (64 hex characters)
-- Saves all credentials including passphrase to `account_credentials.txt`
-- Account is already imported in the RPC node (no need to import separately)
-
-You can then use `source load-credentials.sh` to load the credentials into your shell environment.
-
-#### Import Account
-```bash
-# Import using credentials from account_credentials.txt and unlock
-./uploader account import --from-file --unlock
-
-# Or import manually
-./uploader account import --private-key "hex-key" --passphrase "passphrase" --unlock
-```
-The `--from-file` flag loads `PRIVATE_KEY` and `PASSPHRASE` from `account_credentials.txt`. The `--unlock` flag unlocks the account after importing.
-
-### File Operations
-
-#### Generate Manifest
-```bash
-./uploader manifest --file /path/to/file.bin --game-id 1 --sender "NQ00 ..." --network testnet
-```
-
-#### Upload (Dry-Run)
-```bash
-./uploader upload --file /path/to/file.bin --game-id 1 --sender "NQ00 ..." --dry-run
-```
-
-#### Upload (Real)
-```bash
-./uploader upload --file /path/to/file.bin --game-id 1 --sender "NQ00 ..." --receiver "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES" --rate 1.0 --fee 0
-```
-The `--receiver` flag specifies where to send the data transactions (defaults to `NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES`).
-
-## Flags
-
-### Common Flags
-- `--rpc-url`: Nimiq RPC URL (default: `http://192.168.50.99:8648` mainnet, or set `NIMIQ_RPC_URL` env var)
-- `--game-id`: Game ID (uint32, required for upload/manifest)
-- `--sender`: Sender address (required)
-
-### Upload Flags
-- `--file`: Path to file to upload (required)
-- `--sender`: Sender address (defaults to ADDRESS from account_credentials.txt)
-- `--receiver`: Receiver address for data transactions (default: `NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES`)
-- `--dry-run`: Generate upload plan without sending transactions
-- `--rate`: Transaction rate limit (tx/s, default: 1.0)
-- `--fee`: Transaction fee in Luna (default: 0)
-
-### Manifest Flags
-- `--network`: Network (default: mainnet, or set `NIMIQ_NETWORK` env var)
-- `--output`: Output manifest file (default: manifest.json)
-
-### Account Flags
-- `--save`: File to save credentials to (default: account_credentials.txt)
-- `--min-nim`: Minimum NIM balance for wait-funds (default: 0.001)
-- `--interval`: Check interval in seconds for wait-funds (default: 10)
-
-## Progress Tracking
-
-Upload progress is automatically saved to `upload_plan_<game_id>.json`. If an upload is interrupted, simply run the upload command again - it will resume from where it left off.
-
-## Credentials File
-
-When you create an account, credentials are saved to `account_credentials.txt` with:
-- ADDRESS
-- PUBLIC_KEY
-- PRIVATE_KEY
-- PASSPHRASE
-- RPC_URL
 
 **Keep this file secure!** It contains your private key.
 
-Use `source load-credentials.sh` to load these into your shell environment.
+## Upload Examples
+
+### Upload a DOS Game
+
+```bash
+nimiq-uploader upload-cartridge \
+  --file doom.zip \
+  --title "DOOM" \
+  --semver 1.0.0 \
+  --platform 0 \
+  --catalog-addr main \
+  --generate-cartridge-addr \
+  --concurrency 5 \
+  --rate 25
+```
+
+### Upload a New Version
+
+```bash
+nimiq-uploader upload-cartridge \
+  --file doom-v2.zip \
+  --title "DOOM" \
+  --semver 1.1.0 \
+  --platform 0 \
+  --catalog-addr main \
+  --generate-cartridge-addr
+```
+
+The tool automatically finds the existing app-id for the title.
+
+### Dry Run (Test Without Sending)
+
+```bash
+nimiq-uploader upload-cartridge \
+  --file game.zip \
+  --title "Test Game" \
+  --semver 1.0.0 \
+  --catalog-addr test \
+  --generate-cartridge-addr \
+  --dry-run
+```
+
+## Platform Codes
+
+| Code | Platform |
+|------|----------|
+| 0 | DOS |
+| 1 | Game Boy |
+| 2 | Game Boy Color |
+| 3 | NES |
+
+## Catalog Addresses
+
+| Shortcut | Address |
+|----------|---------|
+| `main` | NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948 |
+| `test` | NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0 |
+
+## Progress and Resumption
+
+Upload progress is saved to `upload_cartridge_<app_id>_<cartridge_id>.json`. If interrupted, run the same command again to resume.
+
+## Makefile Targets
+
+```bash
+make              # Build
+make build        # Build
+make build-all    # Build for all platforms
+make install      # Install to /usr/local/bin
+make install-user # Install to ~/bin
+make config       # Set up config directory
+make uninstall    # Remove installed binary
+make clean        # Clean build artifacts
+make help         # Show help
+```
 
 ## Requirements
 
 - Go 1.21+
-- Nimiq RPC endpoint (default: http://192.168.50.99:8648 mainnet)
-- Account imported and unlocked in the RPC node
-- Account funded with some NIM (transactions cost just a few cents)
+- Nimiq RPC endpoint (run your own node or set RPC_URL in credentials)
+- Account funded with NIM
 
-## See Also
+## Legacy Commands
 
-- `usage-examples.sh` - Interactive usage examples
-- `load-credentials.sh` - Load credentials from file
-- Main project README.md for full documentation
+The following commands are deprecated but kept for backwards compatibility:
+
+- `upload` - Old DOOM format upload (use `upload-cartridge` instead)
+- `manifest` - Old manifest generation (not needed with cartridge format)

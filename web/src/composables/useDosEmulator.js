@@ -12,34 +12,41 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
   function loadDosLibrary(targetWindow = window) {
     const targetDocument = targetWindow.document
     
+    // Validate the Dos object is actually usable
+    const validateDos = (Dos) => {
+      if (typeof Dos !== 'function') {
+        console.warn('Dos is not a function:', typeof Dos, Dos)
+        return false
+      }
+      return true
+    }
+    
     return new Promise((resolve, reject) => {
       // Check if already loaded in target window
       if (typeof targetWindow.Dos !== 'undefined') {
-        resolve(targetWindow.Dos)
-        return
+        if (validateDos(targetWindow.Dos)) {
+          console.log('JS-DOS already loaded in target window')
+          resolve(targetWindow.Dos)
+          return
+        } else {
+          console.warn('Dos exists but is not valid, will try to reload')
+          delete targetWindow.Dos
+        }
       }
       
       // Check if script is already being loaded in target document
-      if (targetDocument.querySelector('script[src*="js-dos"]')) {
-        // Script tag exists, wait for it to load
-        const startTime = Date.now()
-        const checkInterval = setInterval(() => {
-          if (typeof targetWindow.Dos !== 'undefined') {
-            clearInterval(checkInterval)
-            resolve(targetWindow.Dos)
-          } else if (Date.now() - startTime > 10000) {
-            clearInterval(checkInterval)
-            reject(new Error('JS-DOS library failed to load from script tag'))
-          }
-        }, 100)
-        return
+      const existingScript = targetDocument.querySelector('script[src*="js-dos"]')
+      if (existingScript) {
+        // Remove existing script and try fresh
+        console.log('Removing existing JS-DOS script tag to reload fresh')
+        existingScript.remove()
       }
       
-      // Try multiple CDN sources (js-dos.com CDN seems to be down, using jsdelivr as primary)
+      // Try multiple CDN sources (jsdelivr as primary, most reliable)
       const cdnSources = [
         'https://cdn.jsdelivr.net/npm/js-dos@6.22.60/dist/js-dos.js',
         'https://unpkg.com/js-dos@6.22.60/dist/js-dos.js',
-        'https://js-dos.com/cdn/6.22/js-dos.js' // Fallback (may be 404)
+        'https://js-dos.com/cdn/6.22/js-dos.js'
       ]
       
       let currentIndex = 0
@@ -51,22 +58,34 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
           script.async = true
           script.crossOrigin = 'anonymous'
           
+          const timeoutId = setTimeout(() => {
+            scriptReject(new Error(`Timeout loading from ${url}`))
+          }, 15000)
+          
           script.onload = () => {
             // Wait for Dos to be available in target window
             const startTime = Date.now()
             const checkInterval = setInterval(() => {
               if (typeof targetWindow.Dos !== 'undefined') {
                 clearInterval(checkInterval)
-                scriptResolve(targetWindow.Dos)
-              } else if (Date.now() - startTime > 5000) {
+                clearTimeout(timeoutId)
+                if (validateDos(targetWindow.Dos)) {
+                  console.log(`JS-DOS loaded successfully from ${url}`)
+                  scriptResolve(targetWindow.Dos)
+                } else {
+                  scriptReject(new Error('Dos loaded but is not a valid function'))
+                }
+              } else if (Date.now() - startTime > 10000) {
                 clearInterval(checkInterval)
-                scriptReject(new Error('JS-DOS library loaded but Dos object not found'))
+                clearTimeout(timeoutId)
+                scriptReject(new Error('JS-DOS library loaded but Dos object not found after 10s'))
               }
-            }, 50)
+            }, 100)
           }
           
-          script.onerror = () => {
-            scriptReject(new Error(`Failed to load from ${url}`))
+          script.onerror = (e) => {
+            clearTimeout(timeoutId)
+            scriptReject(new Error(`Failed to load from ${url}: ${e?.message || 'network error'}`))
           }
           
           targetDocument.head.appendChild(script)
@@ -76,7 +95,7 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
       // Try loading from each CDN source
       const attemptLoad = async () => {
         if (currentIndex >= cdnSources.length) {
-          reject(new Error('Failed to load JS-DOS library from all CDN sources. Please check your internet connection.'))
+          reject(new Error('Failed to load JS-DOS library from all CDN sources. Please check your internet connection and try refreshing the page.'))
           return
         }
         
@@ -89,6 +108,10 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
           const failedScript = targetDocument.querySelector(`script[src="${cdnSources[currentIndex]}"]`)
           if (failedScript) {
             failedScript.remove()
+          }
+          // Also clear any partial Dos object
+          if (targetWindow.Dos) {
+            delete targetWindow.Dos
           }
           currentIndex++
           attemptLoad()
@@ -386,9 +409,40 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
       const initDos = async (options) => {
         console.log('Initializing Dos with canvas element:', canvas)
         
+        // Verify canvas is still valid (not detached from DOM)
+        if (!canvas || !canvas.parentElement) {
+          throw new Error('Canvas element is no longer in the DOM')
+        }
+        
+        // Verify Dos function exists and is callable
+        if (typeof Dos !== 'function') {
+          throw new Error('Dos is not a function - JS-DOS may not have loaded correctly')
+        }
+        
         // JS-DOS uses .ready() callback that provides fs and main
         return new Promise((resolve, reject) => {
-          const dosboxPromise = Dos(canvas, options)
+          let dosboxPromise
+          
+          try {
+            dosboxPromise = Dos(canvas, options)
+          } catch (dosInitErr) {
+            console.error('Dos() threw an error:', dosInitErr)
+            reject(new Error(`Dos initialization error: ${dosInitErr?.message || String(dosInitErr)}`))
+            return
+          }
+          
+          // Check if Dos() returned a valid promise-like object
+          if (!dosboxPromise) {
+            reject(new Error('Dos() returned null or undefined'))
+            return
+          }
+          
+          if (typeof dosboxPromise.ready !== 'function') {
+            console.error('dosboxPromise does not have ready() method:', dosboxPromise)
+            reject(new Error('Dos() did not return a valid JS-DOS instance (missing ready method)'))
+            return
+          }
+          
           dosPromise.value = dosboxPromise // Store promise for proper termination
           
           dosboxPromise.ready((fs, main) => {
@@ -418,30 +472,42 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
       }
       
       let fs, main
-      try {
-        // Try official js-dos.com CDN first
-        const result = await initDos({
+      
+      // CDN configurations to try in order
+      const cdnConfigs = [
+        {
+          name: 'jsdelivr',
+          wdosboxUrl: 'https://cdn.jsdelivr.net/npm/js-dos@6.22.60/dist/wdosbox.js',
+          wdosboxWasmUrl: 'https://cdn.jsdelivr.net/npm/js-dos@6.22.60/dist/wdosbox.wasm'
+        },
+        {
+          name: 'js-dos.com',
           wdosboxUrl: 'https://js-dos.com/cdn/6.22/wdosbox.js',
-          wdosboxWasmUrl: 'https://js-dos.com/cdn/6.22/wdosbox.wasm',
-          onprogress: (stage, total, loaded) => {
-            console.log(`Loading DOSBox: ${stage} ${loaded}/${total}`)
-          }
-        })
-        dosbox = result.dosbox
-        ci = result.ci
-        dosCi.value = result.ci // Store CI for termination
-        fs = result.fs
-        main = result.main
-        console.log('Successfully initialized with js-dos.com CDN')
-      } catch (err) {
-        console.warn('js-dos.com CDN failed, trying unpkg:', err)
-        // Fallback to unpkg
+          wdosboxWasmUrl: 'https://js-dos.com/cdn/6.22/wdosbox.wasm'
+        },
+        {
+          name: 'unpkg',
+          wdosboxUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.js',
+          wdosboxWasmUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.wasm'
+        }
+      ]
+      
+      let lastError = null
+      let initialized = false
+      
+      for (const cdn of cdnConfigs) {
+        // Check if iframe/canvas is still valid before each attempt
+        if (!canvas || !canvas.parentElement || !emulatorIframe.value) {
+          throw new Error('Emulator was stopped during initialization')
+        }
+        
         try {
+          console.log(`Trying to initialize JS-DOS with ${cdn.name} CDN...`)
           const result = await initDos({
-            wdosboxUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.js',
-            wdosboxWasmUrl: 'https://unpkg.com/js-dos@6.22.60/dist/wdosbox.wasm',
+            wdosboxUrl: cdn.wdosboxUrl,
+            wdosboxWasmUrl: cdn.wdosboxWasmUrl,
             onprogress: (stage, total, loaded) => {
-              console.log(`Loading DOSBox: ${stage} ${loaded}/${total}`)
+              console.log(`Loading DOSBox (${cdn.name}): ${stage} ${loaded}/${total}`)
             }
           })
           dosbox = result.dosbox
@@ -449,11 +515,19 @@ export function useDosEmulator(manifest, fileData, verified, loading, error, gam
           dosCi.value = result.ci // Store CI for termination
           fs = result.fs
           main = result.main
-          console.log('Successfully initialized with unpkg CDN')
-        } catch (err2) {
-          console.error('Both CDNs failed:', err2)
-          throw new Error(`Failed to initialize JS-DOS: ${err2?.message || String(err2)}`)
+          console.log(`Successfully initialized with ${cdn.name} CDN`)
+          initialized = true
+          break
+        } catch (err) {
+          console.warn(`${cdn.name} CDN failed:`, err?.message || err)
+          lastError = err
         }
+      }
+      
+      if (!initialized) {
+        console.log(`Failed to initialize JS-DOS after trying all CDNs. Last error: ${lastError?.message || String(lastError)}`)
+        loading.value = false
+        return
       }
       
       // Create DOSBox configuration file for better screen resolution and scaling

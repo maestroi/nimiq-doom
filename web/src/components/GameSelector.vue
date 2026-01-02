@@ -8,61 +8,87 @@
       <LoadingSkeleton v-if="catalogLoading" :show-cards="true" :card-count="3" />
       
       <div v-else class="space-y-2">
-        <!-- Search Filter -->
-        <div v-if="games && games.length > 3" class="mb-3">
-          <div class="relative">
-            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Search games..."
-              class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 pl-8 pr-8 py-1.5"
-            />
-            <button 
-              v-if="searchQuery"
-              @click="searchQuery = ''"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        
         <!-- Platform Selection -->
-        <div v-if="availablePlatforms.length > 0">
+        <div v-if="availablePlatforms.length > 1">
           <label class="block text-xs font-medium text-gray-400 mb-1">Platform</label>
           <select
             :value="selectedPlatform || ''"
             @change="onPlatformSelect($event.target.value)"
             class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1.5"
           >
-            <option value="">-- Select Platform --</option>
+            <option value="">All Platforms</option>
             <option v-for="platform in availablePlatforms" :key="platform" :value="platform">
               {{ platform }}
             </option>
           </select>
         </div>
         
-        <!-- Game Selection -->
-        <div v-if="selectedPlatform || availablePlatforms.length === 0">
+        <!-- Game Selection with Search -->
+        <div class="relative" ref="gameDropdownRef">
           <label class="block text-xs font-medium text-gray-400 mb-1">
             Game
             <span v-if="selectedGame" class="ml-2 text-xs text-gray-500 font-normal">(ID: {{ selectedGame.appId }})</span>
           </label>
-          <select
-            :value="selectedGame ? selectedGame.appId : ''"
-            @change="onGameSelect($event.target.value)"
-            class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-2 py-1.5"
+          
+          <!-- Input that acts as both display and search -->
+          <div class="relative">
+            <input
+              ref="gameInputRef"
+              type="text"
+              :value="gameInputValue"
+              @input="onGameInputChange($event.target.value)"
+              @focus="openGameDropdown"
+              @keydown="onGameKeydown"
+              :placeholder="selectedGame ? '' : 'Type to search or select...'"
+              class="w-full text-xs rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 pl-2 pr-8 py-1.5"
+            />
+            <!-- Dropdown arrow / clear button -->
+            <button 
+              v-if="gameSearchQuery || selectedGame"
+              @click="clearGameSelection"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              type="button"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <button 
+              v-else
+              @click="toggleGameDropdown"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              type="button"
+            >
+              <svg class="w-4 h-4" :class="{ 'rotate-180': gameDropdownOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+          
+          <!-- Dropdown list -->
+          <div 
+            v-show="gameDropdownOpen"
+            class="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-600 rounded-md shadow-lg max-h-48 overflow-y-auto"
           >
-            <option value="">-- Select Game --</option>
-            <option v-for="game in filteredGames" :key="game.appId" :value="game.appId">
-              {{ game.title }}{{ game.retired ? ' (Retired)' : '' }}
-            </option>
-          </select>
+            <div v-if="filteredGames.length === 0" class="px-3 py-2 text-xs text-gray-500">
+              No games found
+            </div>
+            <button
+              v-for="(game, index) in filteredGames"
+              :key="game.appId"
+              @click="selectGame(game)"
+              @mouseenter="highlightedIndex = index"
+              :class="[
+                'w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between',
+                highlightedIndex === index ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700',
+                selectedGame?.appId === game.appId ? 'bg-gray-700' : ''
+              ]"
+              type="button"
+            >
+              <span class="truncate">{{ game.title }}{{ game.retired ? ' (Retired)' : '' }}</span>
+              <span class="text-xs opacity-60 ml-2">{{ game.platform }}</span>
+            </button>
+          </div>
         </div>
         
         <!-- Version Selection -->
@@ -285,7 +311,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { formatBytes, formatHash, copyToClipboard, estimateDownloadTime, formatNimiqAddress } from '../utils.js'
 import LoadingSkeleton from './LoadingSkeleton.vue'
 
@@ -305,8 +331,108 @@ const props = defineProps({
   progressPercent: Number
 })
 
-// Search query for filtering games
-const searchQuery = ref('')
+// Game dropdown state
+const gameDropdownRef = ref(null)
+const gameInputRef = ref(null)
+const gameDropdownOpen = ref(false)
+const gameSearchQuery = ref('')
+const highlightedIndex = ref(0)
+
+// Computed input value - show selected game title or search query
+const gameInputValue = computed(() => {
+  if (gameDropdownOpen.value) {
+    return gameSearchQuery.value
+  }
+  return props.selectedGame?.title || ''
+})
+
+// Open dropdown
+function openGameDropdown() {
+  gameDropdownOpen.value = true
+  gameSearchQuery.value = ''
+  highlightedIndex.value = 0
+}
+
+// Toggle dropdown
+function toggleGameDropdown() {
+  if (gameDropdownOpen.value) {
+    gameDropdownOpen.value = false
+  } else {
+    openGameDropdown()
+    gameInputRef.value?.focus()
+  }
+}
+
+// Handle input change
+function onGameInputChange(value) {
+  gameSearchQuery.value = value
+  gameDropdownOpen.value = true
+  highlightedIndex.value = 0
+}
+
+// Handle keyboard navigation
+function onGameKeydown(event) {
+  if (!gameDropdownOpen.value && (event.key === 'ArrowDown' || event.key === 'Enter')) {
+    openGameDropdown()
+    event.preventDefault()
+    return
+  }
+  
+  if (!gameDropdownOpen.value) return
+  
+  switch (event.key) {
+    case 'ArrowDown':
+      event.preventDefault()
+      highlightedIndex.value = Math.min(highlightedIndex.value + 1, filteredGames.value.length - 1)
+      break
+    case 'ArrowUp':
+      event.preventDefault()
+      highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
+      break
+    case 'Enter':
+      event.preventDefault()
+      if (filteredGames.value[highlightedIndex.value]) {
+        selectGame(filteredGames.value[highlightedIndex.value])
+      }
+      break
+    case 'Escape':
+      event.preventDefault()
+      gameDropdownOpen.value = false
+      gameSearchQuery.value = ''
+      break
+  }
+}
+
+// Select a game
+function selectGame(game) {
+  emit('update:game', game)
+  gameDropdownOpen.value = false
+  gameSearchQuery.value = ''
+  gameInputRef.value?.blur()
+}
+
+// Clear game selection
+function clearGameSelection() {
+  emit('update:game', null)
+  gameSearchQuery.value = ''
+  gameDropdownOpen.value = false
+}
+
+// Close dropdown when clicking outside
+function handleClickOutside(event) {
+  if (gameDropdownRef.value && !gameDropdownRef.value.contains(event.target)) {
+    gameDropdownOpen.value = false
+    gameSearchQuery.value = ''
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 // Copy feedback state
 const copiedField = ref(null)
@@ -346,9 +472,9 @@ const filteredGames = computed(() => {
     filtered = filtered.filter(game => game.platform === props.selectedPlatform)
   }
   
-  // Filter by search query
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase().trim()
+  // Filter by search query (from game dropdown)
+  if (gameSearchQuery.value) {
+    const query = gameSearchQuery.value.toLowerCase().trim()
     filtered = filtered.filter(game => 
       game.title?.toLowerCase().includes(query) ||
       game.platform?.toLowerCase().includes(query)

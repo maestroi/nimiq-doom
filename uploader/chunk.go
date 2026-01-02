@@ -1,5 +1,26 @@
 package main
 
+// ==============================================================================
+// LEGACY CODE - DEPRECATED
+// ==============================================================================
+// This file contains the old "DOOM" chunk format.
+// It has been replaced by cartridge.go which uses the new CART/DATA/CENT format.
+//
+// The old format used:
+//   - Magic: "DOOM" (4 bytes)
+//   - Game ID (4 bytes)
+//   - Chunk Index (4 bytes)
+//   - Length (1 byte)
+//   - Data (51 bytes)
+//
+// The new format (cartridge.go) uses:
+//   - CART header with SHA256 hash and metadata
+//   - DATA chunks with cartridge ID
+//   - CENT catalog entries for discovery
+//
+// This code is kept for backwards compatibility.
+// ==============================================================================
+
 import (
 	"encoding/binary"
 	"fmt"
@@ -8,8 +29,8 @@ import (
 )
 
 const (
-	MagicDOOM = "DOOM"
-	ChunkSize = 51
+	MagicDOOM   = "DOOM" // Deprecated: use MagicCART, MagicDATA, MagicCENT
+	ChunkSize   = 51
 	PayloadSize = 64
 )
 

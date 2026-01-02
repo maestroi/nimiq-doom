@@ -1,5 +1,16 @@
 package main
 
+// ==============================================================================
+// LEGACY CODE - DEPRECATED
+// ==============================================================================
+// This file contains the old upload command using the "DOOM" magic format.
+// It has been replaced by upload_cartridge.go which uses the new CART/DATA/CENT
+// format for better organization and catalog support.
+//
+// This code is kept for backwards compatibility with existing uploads.
+// For new uploads, use: nimiq-uploader upload-cartridge
+// ==============================================================================
+
 import (
 	"crypto/sha256"
 	"encoding/hex"
@@ -46,12 +57,9 @@ func newUploadCmd() *cobra.Command {
 		Use:   "upload",
 		Short: "Upload a file as DOOM chunks to Nimiq",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get sender from credentials file if not provided
@@ -220,7 +228,7 @@ func newUploadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&receiver, "receiver", "NQ27 21G6 9BG1 JBHJ NUFA YVJS 1R6C D2X0 QAES", "Receiver address for data transactions")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry-run mode (output plan file only)")
 	cmd.Flags().Float64Var(&rateLimit, "rate", 1.0, "Transaction rate limit (tx/s)")
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().Int64Var(&fee, "fee", 0, "Transaction fee in Luna (default: 0, minimum)")
 	cmd.Flags().BoolVar(&generateManifest, "manifest", true, "Generate manifest.json after upload completes")
 	cmd.Flags().StringVar(&manifestOutput, "manifest-output", "", "Manifest output file (default: manifest.json)")

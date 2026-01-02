@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,12 +17,9 @@ func newAccountBalanceCmd() *cobra.Command {
 		Use:   "balance",
 		Short: "Check account balance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get address from credentials file if not provided
@@ -60,7 +56,7 @@ func newAccountBalanceCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
 
 	return cmd
@@ -78,12 +74,9 @@ func newAccountWaitFundsCmd() *cobra.Command {
 		Use:   "wait-funds",
 		Short: "Wait until account has minimum balance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get address from credentials file if not provided
@@ -142,7 +135,7 @@ func newAccountWaitFundsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&address, "address", "", "Account address to check (required)")
 	cmd.Flags().Float64Var(&minNIM, "min-nim", 0.001, "Minimum NIM balance required (default: 0.001)")
 	cmd.Flags().IntVar(&interval, "interval", 10, "Check interval in seconds (default: 10)")

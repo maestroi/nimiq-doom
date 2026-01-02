@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/time/rate"
@@ -33,12 +32,9 @@ The command will:
 2. Send a new CENT entry with the retired flag set (same app-id, semver, and cartridge address)
 3. The frontend will automatically filter out retired apps`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get sender from credentials file if not provided
@@ -207,7 +203,7 @@ The command will:
 	cmd.Flags().StringVar(&sender, "sender", "", "Sender address (defaults to ADDRESS from account_credentials.txt)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry-run mode (show what would be sent)")
 	cmd.Flags().Float64Var(&rateLimit, "rate", 25.0, "Transaction rate limit (tx/s, default: 25)")
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().Int64Var(&fee, "fee", 0, "Transaction fee in Luna (default: 0, minimum)")
 	cmd.Flags().Uint8Var(&schema, "schema", 1, "Schema version (default: 1)")
 

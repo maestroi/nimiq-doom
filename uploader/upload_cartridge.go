@@ -58,12 +58,9 @@ func newUploadCartridgeCmd() *cobra.Command {
 - Uploads DATA chunk transactions
 - Registers cartridge in catalog with CENT entry`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get sender from credentials file if not provided
@@ -574,7 +571,7 @@ func newUploadCartridgeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sender, "sender", "", "Sender address (defaults to ADDRESS from account_credentials.txt)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry-run mode (output plan file only)")
 	cmd.Flags().Float64Var(&rateLimit, "rate", 25.0, "Transaction rate limit (tx/s, default: 25)")
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().Int64Var(&fee, "fee", 0, "Transaction fee in Luna (default: 0, minimum)")
 	cmd.Flags().Uint8Var(&schema, "schema", 1, "Schema version (default: 1)")
 	cmd.Flags().Uint8Var(&chunkSize, "chunk-size", 51, "Chunk size in bytes (default: 51)")

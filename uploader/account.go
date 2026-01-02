@@ -30,24 +30,28 @@ func newAccountCmd() *cobra.Command {
 
 func newAccountCreateCmd() *cobra.Command {
 	var (
-		rpcURL   string
-		saveFile string
+		rpcURL      string
+		saveFile    string
+		saveToConfig bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new account and save credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
-			if saveFile == "" {
-				saveFile = "account_credentials.txt"
+			// Determine save location
+			if saveToConfig {
+				if err := EnsureConfigDir(); err != nil {
+					return fmt.Errorf("failed to create config directory: %w", err)
+				}
+				saveFile = GetConfigDir() + "/" + CredentialsFileName
+			} else if saveFile == "" {
+				saveFile = CredentialsFileName
 			}
 
 			rpc := NewNimiqRPC(rpcURL)
@@ -134,8 +138,9 @@ RPC_URL=%s
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
-	cmd.Flags().StringVar(&saveFile, "save", "account_credentials.txt", "File to save credentials to")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
+	cmd.Flags().StringVar(&saveFile, "save", "", "File to save credentials to (default: ./account_credentials.txt)")
+	cmd.Flags().BoolVar(&saveToConfig, "global", false, "Save credentials to config directory (~/.config/nimiq-uploader/)")
 
 	return cmd
 }
@@ -153,12 +158,9 @@ func newAccountImportCmd() *cobra.Command {
 		Use:   "import",
 		Short: "Import an account by private key (can use account_credentials.txt)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Load from credentials file if requested
@@ -273,7 +275,7 @@ func newAccountImportCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&privateKey, "private-key", "", "Private key in hex format (or use --from-file)")
 	cmd.Flags().StringVar(&passphrase, "passphrase", "", "Passphrase to encrypt the account (or use --from-file or set NIMIQ_PASSPHRASE)")
 	cmd.Flags().BoolVar(&fromFile, "from-file", false, "Load private key and passphrase from account_credentials.txt")
@@ -348,7 +350,7 @@ func newAccountStatusCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
 
 	return cmd
@@ -361,12 +363,9 @@ func newAccountConsensusCmd() *cobra.Command {
 		Use:   "consensus",
 		Short: "Check if node has consensus with the network",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			rpc := NewNimiqRPC(rpcURL)
@@ -388,7 +387,7 @@ func newAccountConsensusCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 
 	return cmd
 }
@@ -405,12 +404,9 @@ func newAccountUnlockCmd() *cobra.Command {
 		Use:   "unlock",
 		Short: "Unlock an account",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get address from credentials file if not provided
@@ -457,7 +453,7 @@ func newAccountUnlockCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
 	cmd.Flags().StringVar(&passphrase, "passphrase", "", "Passphrase to unlock account (or set NIMIQ_PASSPHRASE)")
 	cmd.Flags().IntVar(&duration, "duration", 0, "Unlock duration in seconds (0 = indefinitely)")
@@ -475,12 +471,9 @@ func newAccountLockCmd() *cobra.Command {
 		Use:   "lock",
 		Short: "Lock an account",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get address from credentials file if not provided
@@ -503,7 +496,7 @@ func newAccountLockCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&rpcURL, "rpc-url", "http://192.168.50.99:8648", "Nimiq RPC URL (default: mainnet)")
+	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
 
 	return cmd

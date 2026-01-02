@@ -1,5 +1,22 @@
 <template>
   <div class="min-h-screen bg-gray-900 text-gray-100">
+    <!-- Shortcut Toast Notification -->
+    <Transition
+      enter-active-class="transition ease-out duration-200"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition ease-in duration-150"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div 
+        v-if="shortcutToast"
+        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg shadow-lg text-sm text-white font-medium"
+      >
+        {{ shortcutToast }}
+      </div>
+    </Transition>
+    
     <!-- Header -->
     <Header
       :selected-rpc-endpoint="selectedRpcEndpoint"
@@ -21,6 +38,7 @@
       @update:game="onGameChange"
       @update:version="onVersionChange"
       @refresh-catalog="loadCatalog"
+      @show-help="showWelcome"
     />
 
     <!-- Main Content -->
@@ -157,11 +175,15 @@
             @stop-game="stopGame"
             @download-file="downloadFile"
             ref="emulatorContainerRef"
+            id="emulator-container"
             class="emulator-container"
           />
         </div>
       </div>
     </div>
+    
+    <!-- Welcome Modal -->
+    <WelcomeModal ref="welcomeModalRef" />
   </div>
 </template>
 
@@ -173,6 +195,7 @@ import Header from './components/Header.vue'
 import EmulatorContainer from './components/EmulatorContainer.vue'
 import GameSelector from './components/GameSelector.vue'
 import RecentlyPlayed from './components/RecentlyPlayed.vue'
+import WelcomeModal from './components/WelcomeModal.vue'
 import { useCatalog } from './composables/useCatalog.js'
 import { useRecentlyPlayed } from './composables/useRecentlyPlayed.js'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts.js'
@@ -193,7 +216,7 @@ const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
 
 // Configuration - Multiple catalogs
 const catalogs = ref([
-  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0', devOnly: true },
+  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0' },
   { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' },
   { name: 'Custom...', address: 'custom' }
 ])
@@ -264,10 +287,21 @@ const {
 
 const runJson = ref(null)
 
-// Watch for cartridge loading completion to extract run.json
+// Auto-run setting
+const autoRunAfterDownload = ref(true)
+
+// Watch for cartridge loading completion to extract run.json and auto-run
 watch([fileData, verified], async ([newFileData, newVerified]) => {
   if (newFileData && newVerified) {
     runJson.value = await extractRunJson()
+    
+    // Auto-run the game after successful download
+    if (autoRunAfterDownload.value && !gameReady.value) {
+      // Small delay to ensure UI is updated
+      setTimeout(() => {
+        runGame()
+      }, 100)
+    }
   } else {
     runJson.value = null
   }
@@ -296,31 +330,48 @@ async function selectRecentGame(recentGame) {
   if (game) {
     selectedPlatform.value = game.platform
     await onGameChange(game)
-    // Auto-load the cartridge
-    setTimeout(() => {
-      loadCartridge()
-    }, 100)
+    // onGameChange now auto-starts download
   }
 }
 
 // Keyboard shortcuts
 const shortcutsEnabled = computed(() => gameReady.value)
-const { shortcuts, toggleFullscreen, isPaused, isMuted } = useKeyboardShortcuts({
+const shortcutToast = ref(null)
+
+function showShortcutToast(message) {
+  shortcutToast.value = message
+  setTimeout(() => {
+    shortcutToast.value = null
+  }, 1500)
+}
+
+const { shortcuts, toggleFullscreen, isPaused, isMuted, lastAction, isActive } = useKeyboardShortcuts({
   enabled: shortcutsEnabled,
   onFullscreen: (isFullscreen) => {
-    console.log('Fullscreen:', isFullscreen)
+    console.log('[App] Fullscreen toggled:', isFullscreen)
   },
-  onReset: () => {
-    console.log('Reset game requested')
-    // Could implement emulator reset here
+  onReset: async () => {
+    // Stop and restart the game
+    if (gameReady.value) {
+      console.log('[App] Resetting game...')
+      await stopGame()
+      setTimeout(() => runGame(), 200)
+    }
   },
   onPause: (paused) => {
-    console.log('Pause:', paused)
-    // Could implement pause here
+    console.log('[App] Pause toggled:', paused)
+    // Note: Pause requires emulator support - iframe emulators may not support this
   },
   onMute: (muted) => {
-    console.log('Mute:', muted)
-    // Could implement mute here
+    console.log('[App] Mute toggled:', muted)
+    // Note: Mute requires emulator support - iframe emulators may not support this
+  }
+})
+
+// Watch lastAction from keyboard shortcuts to show toast
+watch(lastAction, (action) => {
+  if (action) {
+    shortcutToast.value = action
   }
 })
 
@@ -365,6 +416,14 @@ async function onGameChange(game) {
   fileData.value = null
   verified.value = false
   runJson.value = null
+  
+  // Auto-start download when game is selected
+  if (game && selectedVersion.value) {
+    // Small delay to ensure state is updated
+    setTimeout(() => {
+      loadCartridge()
+    }, 50)
+  }
 }
 
 // Handle catalog selection
@@ -409,6 +468,13 @@ async function onVersionChange(version) {
   fileData.value = null
   verified.value = false
   runJson.value = null
+  
+  // Auto-start download when version changes
+  if (version) {
+    setTimeout(() => {
+      loadCartridge()
+    }, 50)
+  }
 }
 
 // Watch for catalog address changes to reload catalog
@@ -458,6 +524,12 @@ watch(selectedVersion, async (newVersion) => {
 // Emulator
 const gameReady = ref(false)
 const emulatorContainerRef = ref(null)
+const welcomeModalRef = ref(null)
+
+// Show welcome modal (can be triggered from help button)
+function showWelcome() {
+  welcomeModalRef.value?.show()
+}
 
 // Helper to convert platform code to string
 function getPlatformName(platformCode) {

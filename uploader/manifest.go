@@ -1,5 +1,15 @@
 package main
 
+// ==============================================================================
+// LEGACY CODE - DEPRECATED
+// ==============================================================================
+// This file generates old-style manifest.json files for the DOOM format.
+// The new cartridge format (CART/DATA/CENT) doesn't require a separate manifest
+// because all metadata is stored on-chain in the CART header and CENT entry.
+//
+// This code is kept for backwards compatibility with existing tools.
+// ==============================================================================
+
 import (
 	"crypto/sha256"
 	"encoding/json"

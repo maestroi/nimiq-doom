@@ -1,6 +1,7 @@
 const CACHE_DB_NAME = 'nimiq-doom-cache'
 const CACHE_DB_VERSION = 1
 const CACHE_STORE_NAME = 'game-files'
+const DEFAULT_MAX_CACHE_SIZE_MB = 200 // 200MB default limit
 
 let cacheDB = null
 
@@ -24,6 +25,84 @@ export function useCache() {
         }
       }
     })
+  }
+
+  /**
+   * Get all cache entries with their sizes
+   */
+  async function getAllCacheEntries() {
+    try {
+      const db = await initCache()
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([CACHE_STORE_NAME], 'readonly')
+        const store = transaction.objectStore(CACHE_STORE_NAME)
+        const request = store.getAll()
+        
+        request.onsuccess = () => resolve(request.result || [])
+        request.onerror = () => reject(request.error)
+      })
+    } catch (err) {
+      console.warn('Failed to get cache entries:', err)
+      return []
+    }
+  }
+
+  /**
+   * Get total cache size in bytes
+   */
+  async function getCacheSize() {
+    const entries = await getAllCacheEntries()
+    return entries.reduce((sum, entry) => sum + (entry.data?.length || 0), 0)
+  }
+
+  /**
+   * Enforce cache size limit using LRU (Least Recently Used) eviction
+   * Removes oldest entries until cache is under the limit
+   * @param {number} maxSizeMB - Maximum cache size in megabytes (default: 200MB)
+   */
+  async function enforceCacheLimit(maxSizeMB = DEFAULT_MAX_CACHE_SIZE_MB) {
+    try {
+      const maxBytes = maxSizeMB * 1024 * 1024
+      const entries = await getAllCacheEntries()
+      
+      let totalSize = entries.reduce((sum, entry) => sum + (entry.data?.length || 0), 0)
+      
+      if (totalSize <= maxBytes) {
+        return // Under limit, nothing to do
+      }
+      
+      console.log(`Cache size ${(totalSize / 1024 / 1024).toFixed(2)}MB exceeds limit ${maxSizeMB}MB, evicting old entries...`)
+      
+      // Sort by timestamp (oldest first) for LRU eviction
+      entries.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+      
+      const db = await initCache()
+      const transaction = db.transaction([CACHE_STORE_NAME], 'readwrite')
+      const store = transaction.objectStore(CACHE_STORE_NAME)
+      
+      let evictedCount = 0
+      let evictedBytes = 0
+      
+      for (const entry of entries) {
+        if (totalSize <= maxBytes) break
+        
+        const entrySize = entry.data?.length || 0
+        store.delete(entry.key)
+        totalSize -= entrySize
+        evictedBytes += entrySize
+        evictedCount++
+      }
+      
+      await new Promise((resolve, reject) => {
+        transaction.oncomplete = resolve
+        transaction.onerror = () => reject(transaction.error)
+      })
+      
+      console.log(`Evicted ${evictedCount} cache entries (${(evictedBytes / 1024 / 1024).toFixed(2)}MB), new size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`)
+      
+    } catch (err) {
+      console.warn('Failed to enforce cache limit:', err)
+    }
   }
 
   function getCacheKey(gameInfo) {
@@ -75,7 +154,7 @@ export function useCache() {
       const gameId = gameInfo.cartridgeId || gameInfo.game_id || 0
       const filename = gameInfo.filename || 'game'
       
-      return new Promise((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         const transaction = db.transaction([CACHE_STORE_NAME], 'readwrite')
         const store = transaction.objectStore(CACHE_STORE_NAME)
         const request = store.put({
@@ -93,6 +172,10 @@ export function useCache() {
         
         request.onerror = () => reject(request.error)
       })
+      
+      // Enforce cache size limit after saving (async, don't block)
+      enforceCacheLimit().catch(err => console.warn('Cache limit enforcement failed:', err))
+      
     } catch (err) {
       console.warn('Cache save error:', err)
     }
@@ -146,6 +229,8 @@ export function useCache() {
     loadFromCache,
     saveToCache,
     clearCache,
-    clearAllCache
+    clearAllCache,
+    getCacheSize,
+    enforceCacheLimit
   }
 }
