@@ -2,6 +2,34 @@
 
 CLI tool for uploading games and files to the Nimiq blockchain using the cartridge format (CART/DATA/CENT).
 
+## ⚠️ Legal Disclaimer
+
+**IMPORTANT: You are solely responsible for ensuring you have the legal right to upload any content.**
+
+- **Only upload content you own, created yourself, or have explicit permission to distribute**
+- Commercial ROMs (Nintendo, Sega, etc.) are copyrighted - uploading them without permission is illegal
+- **Blockchain uploads are permanent** - once uploaded, content cannot be removed
+- This tool is provided for legitimate use cases only
+
+### What CAN you upload?
+✅ Games you created yourself  
+✅ Open source / public domain games  
+✅ Homebrew games (community-created)  
+✅ Freeware / shareware with distribution rights  
+✅ Content you have explicit license to distribute  
+
+### What should you NOT upload?
+❌ Commercial game ROMs you don't have rights to  
+❌ Copyrighted content without permission  
+❌ Pirated software  
+
+**Recommended sources for legal games:**
+- [Homebrew Hub](https://hh.gbdev.io/) - Game Boy homebrew
+- [itch.io](https://itch.io/) - Indie games (check licenses)
+- [DOS Games Archive](https://www.dosgamesarchive.com/) - Freeware DOS games
+- [NESdev](https://www.nesdev.org/) - NES homebrew
+- Games released to public domain by their creators
+
 ## Installation
 
 ### One-Line Install (Linux/macOS)

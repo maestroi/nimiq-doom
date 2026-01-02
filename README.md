@@ -4,6 +4,13 @@ A project that stores retro game files (DOS, Game Boy, NES, and other classic ga
 
 **🌐 Live Demo:** [https://maestroi.github.io/nimiq-doom/](https://maestroi.github.io/nimiq-doom/)
 
+## ⚠️ Legal Notice
+
+This project is a **technical demonstration** of storing and retrieving data on the Nimiq blockchain. 
+
+**For uploaders:** Only upload content you have the legal right to distribute (homebrew, public domain, freeware, or content you created). Uploading copyrighted ROMs without permission is illegal. See the [uploader disclaimer](uploader/README.md#️-legal-disclaimer) for details.
+
+**For users:** This frontend simply retrieves and displays data from the public Nimiq blockchain. The project maintainers do not control what content is uploaded by third parties.
 
 ## Architecture
 
