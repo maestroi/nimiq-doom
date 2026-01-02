@@ -216,7 +216,7 @@ const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
 
 // Configuration - Multiple catalogs
 const catalogs = ref([
-  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0' },
+  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0', devOnly: true },
   { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' },
   { name: 'Custom...', address: 'custom' }
 ])
