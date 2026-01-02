@@ -22,11 +22,16 @@ func main() {
 This tool supports uploading games using the cartridge format (CART/DATA/CENT)
 and managing Nimiq accounts for transaction signing.
 
-Credentials are loaded from:
-  1. ./account_credentials.txt (current directory)
-  2. ~/.config/nimiq-uploader/account_credentials.txt (global config)
+Credentials are loaded from (JSON format):
+  1. ./credentials.json (current directory)
+  2. ~/.config/nimiq-uploader/credentials.json (global config)
+  
+Legacy txt format is also supported:
+  - ./account_credentials.txt
+  - ~/.config/nimiq-uploader/account_credentials.txt
 
-Use 'nimiq-uploader account create --global' to save credentials globally.`,
+Use 'nimiq-uploader account create --global' to save credentials globally.
+Use 'nimiq-uploader migrate --global' to convert old txt to new JSON format.`,
 	}
 
 	// Add version command
@@ -51,7 +56,7 @@ Use 'nimiq-uploader account create --global' to save credentials globally.`,
 			fmt.Println()
 
 			// Check if credentials exist
-			if creds, err := LoadCredentials(CredentialsFileName); err == nil {
+			if creds, err := LoadCredentials(""); err == nil {
 				fmt.Println("Loaded credentials:")
 				if addr := creds["ADDRESS"]; addr != "" {
 					fmt.Printf("  Address: %s\n", addr)
@@ -59,6 +64,7 @@ Use 'nimiq-uploader account create --global' to save credentials globally.`,
 				if rpcURL := creds["RPC_URL"]; rpcURL != "" {
 					fmt.Printf("  RPC URL: %s\n", rpcURL)
 				}
+				fmt.Printf("  RPC URL (effective): %s\n", GetDefaultRPCURL())
 			} else {
 				fmt.Printf("No credentials found. Run 'nimiq-uploader account create' to create an account.\n")
 			}
@@ -70,6 +76,7 @@ Use 'nimiq-uploader account create --global' to save credentials globally.`,
 	rootCmd.AddCommand(newRetireAppCmd())
 	rootCmd.AddCommand(newAccountCmd())
 	rootCmd.AddCommand(newPackageCmd())
+	rootCmd.AddCommand(newMigrateCmd()) // Migrate legacy txt to JSON
 
 	// Legacy commands (kept for backwards compatibility)
 	rootCmd.AddCommand(newUploadCmd())   // Legacy: uses old DOOM format

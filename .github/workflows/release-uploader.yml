@@ -3,104 +3,160 @@ name: Release Uploader
 on:
   push:
     tags:
-      - 'uploader-v*'  # Triggers on tags like uploader-v1.0.0
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to create release for (e.g., uploader-v1.0.0)'
-        required: true
+      - 'v*'  # Triggers on tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   build:
+    name: Build binaries
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            name: linux-amd64
-          - goos: linux
-            goarch: arm64
-            name: linux-arm64
-          - goos: darwin
-            goarch: amd64
-            name: darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            name: darwin-arm64
-          - goos: windows
-            goarch: amd64
-            name: windows-amd64
-            ext: .exe
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-      
-      - name: Build binary
-        working-directory: ./uploader
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+
+      - name: Get version from tag
+        id: version
         run: |
-          go build -ldflags="-w -s" -o uploader${{ matrix.ext }} .
-      
-      - name: Upload artifact
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build binaries
+        working-directory: uploader
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-X main.Version=$VERSION -X main.BuildTime=$BUILD_TIME"
+          
+          # Create output directory
+          mkdir -p ../dist
+          
+          # Build for multiple platforms
+          echo "Building for linux/amd64..."
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../dist/nimiq-uploader-linux-amd64 .
+          
+          echo "Building for linux/arm64..."
+          GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../dist/nimiq-uploader-linux-arm64 .
+          
+          echo "Building for darwin/amd64..."
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../dist/nimiq-uploader-darwin-amd64 .
+          
+          echo "Building for darwin/arm64..."
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../dist/nimiq-uploader-darwin-arm64 .
+          
+          echo "Building for windows/amd64..."
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../dist/nimiq-uploader-windows-amd64.exe .
+          
+          # Create checksums
+          cd ../dist
+          sha256sum * > checksums.txt
+          
+          echo "Build complete!"
+          ls -la
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: uploader-${{ matrix.name }}
-          path: uploader/uploader${{ matrix.ext }}
-          retention-days: 1
-  
+          name: binaries
+          path: dist/
+
   release:
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
     permissions:
       contents: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Get tag name
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Download all artifacts
+
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      
-      - name: Create checksums
-        run: |
-          cd artifacts
-          for file in */uploader*; do
-            sha256sum "$file" > "${file}.sha256"
-          done
-      
+          name: binaries
+          path: dist/
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Release ${{ steps.tag.outputs.tag }}
+          name: Nimiq Uploader ${{ github.ref_name }}
+          body: |
+            ## Nimiq Uploader ${{ github.ref_name }}
+            
+            CLI tool for uploading games to the Nimiq blockchain.
+            
+            ### Quick Install (Linux/macOS)
+            
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/uploader/install.sh | bash
+            ```
+            
+            This automatically detects your OS/architecture and installs to `~/bin`.
+            
+            ### Manual Installation
+            
+            **macOS (Apple Silicon):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/nimiq-uploader-darwin-arm64 -o nimiq-uploader
+            chmod +x nimiq-uploader
+            sudo mv nimiq-uploader /usr/local/bin/
+            ```
+            
+            **macOS (Intel):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/nimiq-uploader-darwin-amd64 -o nimiq-uploader
+            chmod +x nimiq-uploader
+            sudo mv nimiq-uploader /usr/local/bin/
+            ```
+            
+            **Linux (x64):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/nimiq-uploader-linux-amd64 -o nimiq-uploader
+            chmod +x nimiq-uploader
+            sudo mv nimiq-uploader /usr/local/bin/
+            ```
+            
+            **Linux (ARM64):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/nimiq-uploader-linux-arm64 -o nimiq-uploader
+            chmod +x nimiq-uploader
+            sudo mv nimiq-uploader /usr/local/bin/
+            ```
+            
+            **Windows:**
+            Download `nimiq-uploader-windows-amd64.exe` and add to your PATH.
+            
+            ### Verify Installation
+            ```bash
+            nimiq-uploader version
+            ```
+            
+            ### Quick Start
+            ```bash
+            # Create account (saves to ~/.config/nimiq-uploader/)
+            nimiq-uploader account create --global
+            
+            # Check config
+            nimiq-uploader config
+            ```
+            
+            See [README](https://github.com/${{ github.repository }}/blob/main/uploader/README.md) for full documentation.
           files: |
-            artifacts/*/uploader*
-            artifacts/*/uploader*.sha256
+            dist/*
           draft: false
           prerelease: false
-
-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

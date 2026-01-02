@@ -4,14 +4,23 @@ CLI tool for uploading games and files to the Nimiq blockchain using the cartrid
 
 ## Installation
 
-### Quick Install (Linux/macOS)
+### One-Line Install (Linux/macOS)
 
 ```bash
-cd uploader
+curl -fsSL https://raw.githubusercontent.com/Maestroi/nimiq-doom/main/uploader/install.sh | bash
+```
 
-# Build and install to ~/bin (no sudo required)
+This automatically detects your OS/architecture and installs the latest release to `~/bin`.
+
+### From Source (Linux/macOS)
+
+```bash
+git clone https://github.com/Maestroi/nimiq-doom.git
+cd nimiq-doom/uploader
 make install-user
 ```
+
+### Add to PATH
 
 After installation, add `~/bin` to your PATH (if not already):
 
@@ -69,9 +78,12 @@ The uploader needs a Nimiq RPC endpoint to communicate with the blockchain. **Yo
 ```
 
 **Option 2: Set in credentials file**
-```bash
-# Edit ~/.config/nimiq-uploader/account_credentials.txt
-RPC_URL=http://your-node-ip:8648
+```json
+// Edit ~/.config/nimiq-uploader/credentials.json
+{
+  "address": "NQ00 ...",
+  "rpc_url": "http://your-node-ip:8648"
+}
 ```
 
 **Option 3: Environment variable**
@@ -92,15 +104,17 @@ nimiq-uploader account balance --rpc-url http://your-node-ip:8648
 # Save credentials globally (~/.config/nimiq-uploader/)
 nimiq-uploader account create --global
 
-# Or save locally (./account_credentials.txt)
+# Or save locally (./credentials.json)
 nimiq-uploader account create
 ```
 
 ### 2. Configure RPC (if not localhost)
 
-Edit `~/.config/nimiq-uploader/account_credentials.txt` and set:
-```
-RPC_URL=http://your-nimiq-node:8648
+Edit `~/.config/nimiq-uploader/credentials.json` and set:
+```json
+{
+  "rpc_url": "http://your-nimiq-node:8648"
+}
 ```
 
 ### 3. Fund the Address
@@ -156,13 +170,22 @@ nimiq-uploader upload-cartridge \
 | `account wait-funds` | Wait until account has minimum balance |
 | `account consensus` | Check if node has consensus |
 
+### Utility Commands
+
+| Command | Description |
+|---------|-------------|
+| `migrate` | Convert legacy txt credentials to JSON format |
+| `migrate --global` | Migrate and save to global config |
+
 ## Configuration
 
 ### Config Locations
 
 Credentials are loaded from (in order):
-1. `./account_credentials.txt` (current directory)
-2. `~/.config/nimiq-uploader/account_credentials.txt` (global config)
+1. `./credentials.json` (current directory)
+2. `~/.config/nimiq-uploader/credentials.json` (global config)
+3. `./account_credentials.txt` (legacy, current directory)
+4. `~/.config/nimiq-uploader/account_credentials.txt` (legacy, global)
 
 ### View Current Configuration
 
@@ -170,18 +193,33 @@ Credentials are loaded from (in order):
 nimiq-uploader config
 ```
 
-### Credentials File Format
+### Credentials File Format (JSON)
 
-```ini
-# Nimiq Account Credentials
-ADDRESS=NQ00 XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX
-PUBLIC_KEY=...
-PRIVATE_KEY=...
-PASSPHRASE=...
-RPC_URL=http://localhost:8648
+```json
+{
+  "address": "NQ00 XXXX XXXX XXXX XXXX XXXX XXXX XXXX XXXX",
+  "public_key": "...",
+  "private_key": "...",
+  "passphrase": "...",
+  "rpc_url": "http://localhost:8648",
+  "created_at": "2026-01-02T12:00:00Z",
+  "comment": "Optional description"
+}
 ```
 
 ⚠️ **Keep this file secure!** It contains your private key.
+
+### Migrating from Legacy Format
+
+If you have an old `account_credentials.txt` file, convert it to JSON:
+
+```bash
+# Migrate and save globally
+nimiq-uploader migrate --global
+
+# Or migrate to current directory
+nimiq-uploader migrate
+```
 
 ### Load Credentials into Shell
 

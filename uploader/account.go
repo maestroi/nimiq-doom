@@ -30,28 +30,18 @@ func newAccountCmd() *cobra.Command {
 
 func newAccountCreateCmd() *cobra.Command {
 	var (
-		rpcURL      string
-		saveFile    string
+		rpcURL       string
+		saveFile     string
 		saveToConfig bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a new account and save credentials",
+		Short: "Create a new account and save credentials as JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
 				rpcURL = GetDefaultRPCURL()
-			}
-
-			// Determine save location
-			if saveToConfig {
-				if err := EnsureConfigDir(); err != nil {
-					return fmt.Errorf("failed to create config directory: %w", err)
-				}
-				saveFile = GetConfigDir() + "/" + CredentialsFileName
-			} else if saveFile == "" {
-				saveFile = CredentialsFileName
 			}
 
 			rpc := NewNimiqRPC(rpcURL)
@@ -85,40 +75,33 @@ func newAccountCreateCmd() *cobra.Command {
 				fmt.Println("ℹ️  Account already imported (from createAccount)")
 			}
 
-			// Save credentials to file
-			credentials := fmt.Sprintf(`# Nimiq Account Credentials
-# Generated: %s
-# RPC URL: %s
+			// Create credentials struct
+			creds := &Credentials{
+				Address:    account.Address,
+				PublicKey:  account.PublicKey,
+				PrivateKey: account.PrivateKey,
+				Passphrase: passphrase,
+				RPCURL:     rpcURL,
+				CreatedAt:  time.Now().Format(time.RFC3339),
+			}
 
-ADDRESS=%s
-PUBLIC_KEY=%s
-PRIVATE_KEY=%s
-PASSPHRASE=%s
-RPC_URL=%s
-
-# To unlock this account:
-# ./uploader account unlock --passphrase "%s"
-
-# To check balance:
-# ./uploader account balance --address "%s"
-
-# To wait for funds:
-# ./uploader account wait-funds --address "%s"
-`,
-				time.Now().Format("2006-01-02 15:04:05"),
-				rpcURL,
-				account.Address,
-				account.PublicKey,
-				account.PrivateKey,
-				passphrase,
-				rpcURL,
-				passphrase,
-				account.Address,
-				account.Address,
-			)
-
-			if err := os.WriteFile(saveFile, []byte(credentials), 0600); err != nil {
-				return fmt.Errorf("failed to save credentials: %w", err)
+			// Determine save location
+			var savePath string
+			if saveToConfig {
+				if err := SaveCredentialsToConfig(creds); err != nil {
+					return fmt.Errorf("failed to save credentials: %w", err)
+				}
+				savePath = GetConfigDir() + "/" + CredentialsFileName
+			} else if saveFile != "" {
+				if err := SaveCredentials(creds, saveFile); err != nil {
+					return fmt.Errorf("failed to save credentials: %w", err)
+				}
+				savePath = saveFile
+			} else {
+				if err := SaveCredentialsToLocal(creds); err != nil {
+					return fmt.Errorf("failed to save credentials: %w", err)
+				}
+				savePath = CredentialsFileName
 			}
 
 			fmt.Println("✅ Account created and imported successfully!")
@@ -126,20 +109,20 @@ RPC_URL=%s
 			fmt.Printf("Public Key: %s\n", account.PublicKey)
 			fmt.Printf("Private Key: %s\n", account.PrivateKey)
 			fmt.Printf("Passphrase: %s\n", passphrase)
-			fmt.Printf("\n📝 Credentials saved to: %s\n", saveFile)
+			fmt.Printf("\n📝 Credentials saved to: %s\n", savePath)
 			fmt.Println("\n⚠️  IMPORTANT: Keep this file secure! It contains your private key and passphrase.")
 			fmt.Printf("\n💡 Next steps:\n")
 			fmt.Printf("   1. Fund this address with some NIM (mainnet)\n")
-			fmt.Printf("   2. Unlock account: ./uploader account unlock --passphrase \"%s\"\n", passphrase)
-			fmt.Printf("   3. Check balance: ./uploader account balance\n")
-			fmt.Printf("   4. Wait for funds: ./uploader account wait-funds\n")
+			fmt.Printf("   2. Unlock account: nimiq-uploader account unlock --passphrase \"%s\"\n", passphrase)
+			fmt.Printf("   3. Check balance: nimiq-uploader account balance\n")
+			fmt.Printf("   4. Wait for funds: nimiq-uploader account wait-funds\n")
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
-	cmd.Flags().StringVar(&saveFile, "save", "", "File to save credentials to (default: ./account_credentials.txt)")
+	cmd.Flags().StringVar(&saveFile, "save", "", "File to save credentials to (default: ./credentials.json)")
 	cmd.Flags().BoolVar(&saveToConfig, "global", false, "Save credentials to config directory (~/.config/nimiq-uploader/)")
 
 	return cmd
@@ -156,7 +139,7 @@ func newAccountImportCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "import",
-		Short: "Import an account by private key (can use account_credentials.txt)",
+		Short: "Import an account by private key (can use credentials.json)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
@@ -165,7 +148,7 @@ func newAccountImportCmd() *cobra.Command {
 
 			// Load from credentials file if requested
 			if fromFile {
-				creds, err := LoadCredentials("account_credentials.txt")
+				creds, err := LoadCredentials("")
 				if err != nil {
 					return fmt.Errorf("failed to load credentials: %w", err)
 				}
@@ -186,7 +169,7 @@ func newAccountImportCmd() *cobra.Command {
 			}
 
 			if privateKey == "" {
-				return fmt.Errorf("private key is required (--private-key or use --from-file to load from account_credentials.txt)")
+				return fmt.Errorf("private key is required (--private-key or use --from-file to load from credentials.json)")
 			}
 
 			if passphrase == "" {
@@ -204,7 +187,7 @@ func newAccountImportCmd() *cobra.Command {
 			var address string
 			var checkAddress string
 			if fromFile {
-				creds, _ := LoadCredentials("account_credentials.txt")
+				creds, _ := LoadCredentials("")
 				checkAddress = creds["ADDRESS"]
 			}
 
@@ -278,7 +261,7 @@ func newAccountImportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
 	cmd.Flags().StringVar(&privateKey, "private-key", "", "Private key in hex format (or use --from-file)")
 	cmd.Flags().StringVar(&passphrase, "passphrase", "", "Passphrase to encrypt the account (or use --from-file or set NIMIQ_PASSPHRASE)")
-	cmd.Flags().BoolVar(&fromFile, "from-file", false, "Load private key and passphrase from account_credentials.txt")
+	cmd.Flags().BoolVar(&fromFile, "from-file", false, "Load private key and passphrase from credentials.json")
 	cmd.Flags().BoolVar(&unlock, "unlock", false, "Unlock the account after importing")
 
 	return cmd
@@ -294,13 +277,9 @@ func newAccountStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Check account status (imported and unlocked)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Override with env if set
-			if url := os.Getenv("NIMIQ_RPC_URL"); url != "" {
-				rpcURL = url
-			}
-
+			// Get RPC URL from env, credentials file, or default
 			if rpcURL == "" {
-				rpcURL = "http://192.168.50.99:8648" // Default mainnet endpoint
+				rpcURL = GetDefaultRPCURL()
 			}
 
 			// Try to get address from credentials file if not provided
@@ -309,7 +288,7 @@ func newAccountStatusCmd() *cobra.Command {
 			}
 
 			if address == "" {
-				return fmt.Errorf("address is required (--address or set in account_credentials.txt)")
+				return fmt.Errorf("address is required (--address or set in credentials.json)")
 			}
 
 			rpc := NewNimiqRPC(rpcURL)
@@ -351,7 +330,7 @@ func newAccountStatusCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
-	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
+	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to address from credentials.json)")
 
 	return cmd
 }
@@ -415,9 +394,14 @@ func newAccountUnlockCmd() *cobra.Command {
 			}
 
 			if address == "" {
-				return fmt.Errorf("address is required (--address or set in account_credentials.txt)")
+				return fmt.Errorf("address is required (--address or set in credentials.json)")
 			}
 
+			if passphrase == "" {
+				// Try to get from credentials file
+				passphrase = GetDefaultPassphrase()
+			}
+			
 			if passphrase == "" {
 				// Try to get from env
 				if p := os.Getenv("NIMIQ_PASSPHRASE"); p != "" {
@@ -454,8 +438,8 @@ func newAccountUnlockCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
-	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
-	cmd.Flags().StringVar(&passphrase, "passphrase", "", "Passphrase to unlock account (or set NIMIQ_PASSPHRASE)")
+	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to address from credentials.json)")
+	cmd.Flags().StringVar(&passphrase, "passphrase", "", "Passphrase to unlock account (defaults to passphrase from credentials.json)")
 	cmd.Flags().IntVar(&duration, "duration", 0, "Unlock duration in seconds (0 = indefinitely)")
 
 	return cmd
@@ -482,7 +466,7 @@ func newAccountLockCmd() *cobra.Command {
 			}
 
 			if address == "" {
-				return fmt.Errorf("address is required (--address or set in account_credentials.txt)")
+				return fmt.Errorf("address is required (--address or set in credentials.json)")
 			}
 
 			rpc := NewNimiqRPC(rpcURL)
@@ -497,7 +481,7 @@ func newAccountLockCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Nimiq RPC URL (default: from credentials or localhost:8648)")
-	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to ADDRESS from account_credentials.txt)")
+	cmd.Flags().StringVar(&address, "address", "", "Account address (defaults to address from credentials.json)")
 
 	return cmd
 }
