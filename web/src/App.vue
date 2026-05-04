@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-gray-100">
+  <div class="min-h-screen bg-grid" style="background-color: var(--color-bg); color: var(--color-text); font-family: var(--font-ui);">
     <!-- Shortcut Toast Notification -->
     <Transition
       enter-active-class="transition ease-out duration-200"
@@ -9,9 +9,10 @@
       leave-from-class="opacity-100 translate-y-0"
       leave-to-class="opacity-0 -translate-y-2"
     >
-      <div 
+      <div
         v-if="shortcutToast"
-        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg shadow-lg text-sm text-white font-medium"
+        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium"
+        style="background: var(--color-surface); border: 1px solid var(--color-primary); color: var(--color-text); box-shadow: 0 0 20px rgba(124,58,237,0.3); font-family: var(--font-terminal); letter-spacing: 0.06em;"
       >
         {{ shortcutToast }}
       </div>
@@ -42,90 +43,89 @@
     />
 
     <!-- Main Content -->
-    <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <!-- Developer Mode Panel -->
-      <div v-if="developerMode" class="mb-6 rounded-md bg-purple-900/30 border border-purple-700 p-4">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold text-purple-200">🧪 Developer Mode</h3>
+      <div
+        v-if="developerMode"
+        class="mb-5 rounded-lg p-4 space-y-4"
+        style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.35);"
+      >
+        <div class="flex items-center justify-between">
+          <h3
+            class="text-xs font-semibold tracking-widest"
+            style="font-family: var(--font-terminal); font-size: 1rem; letter-spacing: 0.1em; color: var(--color-primary-l);"
+          >
+            DEV MODE
+          </h3>
           <button
             @click="developerMode = false"
-            class="text-purple-400 hover:text-purple-300"
+            class="btn-ghost p-1 rounded cursor-pointer"
+            aria-label="Close developer mode"
           >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-purple-200 mb-2">
-              Test Local Game File (ZIP)
+
+        <div>
+          <label class="block text-xs font-medium mb-2" style="color: var(--color-muted);">Test Local Game File (ZIP)</label>
+          <div class="flex gap-2">
+            <input type="file" ref="localFileInput" @change="handleLocalFileUpload" accept=".zip" class="hidden" id="local-file-input" />
+            <label
+              for="local-file-input"
+              class="btn-ghost flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm rounded-md cursor-pointer"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              {{ localFileName || 'Choose ZIP file...' }}
             </label>
-            <div class="flex gap-2">
-              <input
-                type="file"
-                ref="localFileInput"
-                @change="handleLocalFileUpload"
-                accept=".zip"
-                class="hidden"
-                id="local-file-input"
-              />
-              <label
-                for="local-file-input"
-                class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-purple-600 text-sm font-medium rounded-md text-purple-200 bg-purple-800/50 hover:bg-purple-800 cursor-pointer"
-              >
-                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                {{ localFileName || 'Choose ZIP file...' }}
-              </label>
-              <button
-                v-if="localFileData"
-                @click="runLocalGame"
-                :disabled="loading || gameReady"
-                class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Run Local Game
-              </button>
-            </div>
-            <p v-if="localFileName" class="mt-2 text-xs text-purple-300">
-              Loaded: {{ localFileName }} ({{ formatBytes(localFileData?.length || 0) }})
-            </p>
+            <button
+              v-if="localFileData"
+              @click="runLocalGame"
+              :disabled="loading || gameReady"
+              class="btn-primary px-4 py-2 text-sm rounded-md cursor-pointer"
+            >
+              Run Local
+            </button>
           </div>
-           <div>
-             <label class="flex items-center gap-2">
-               <input
-                 type="checkbox"
-                 v-model="showRetiredGames"
-                 @change="loadCatalog"
-                 class="rounded border-purple-600 bg-purple-800/50 text-purple-600 focus:ring-purple-500"
-               />
-               <span class="text-sm font-medium text-purple-200">Show Retired Games</span>
-             </label>
-             <p class="mt-1 text-xs text-purple-300">
-               Display games that have been marked as retired in the catalog
-             </p>
-           </div>
-          <div class="pt-2 border-t border-purple-700/50">
-            <p class="text-xs text-purple-300">
-              💡 This mode allows you to test games locally before uploading to the blockchain. 
-              Upload a ZIP file containing your DOS game files and run it directly.
-            </p>
-          </div>
+          <p v-if="localFileName" class="mt-1.5 text-xs" style="color: var(--color-muted);">
+            Loaded: {{ localFileName }} ({{ formatBytes(localFileData?.length || 0) }})
+          </p>
         </div>
+
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              v-model="showRetiredGames"
+              @change="loadCatalog"
+              class="rounded"
+              style="accent-color: var(--color-primary);"
+            />
+            <span class="text-sm" style="color: var(--color-muted);">Show Retired Games</span>
+          </label>
+        </div>
+
+        <p class="text-xs pt-2 border-t" style="color: var(--color-dim); border-color: rgba(124,58,237,0.2);">
+          Test games locally before uploading to the blockchain. Upload a ZIP file with your DOS game and run it directly.
+        </p>
       </div>
 
       <!-- Error Message -->
-      <div v-if="error" class="mb-6 rounded-md bg-red-900/50 border border-red-700 p-4">
-        <div class="flex">
-          <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <div class="ml-3">
-            <h3 class="text-sm font-medium text-red-200">Error</h3>
-            <div class="mt-2 text-sm text-red-300">{{ error }}</div>
+      <div
+        v-if="error"
+        class="mb-5 rounded-lg p-4"
+        style="background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.35);"
+      >
+        <div class="flex items-start gap-3">
+          <svg class="h-4 w-4 mt-0.5 flex-shrink-0 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+          </svg>
+          <div>
+            <p class="text-xs font-medium text-red-400 mb-1" style="font-family: var(--font-terminal); letter-spacing: 0.06em;">ERROR</p>
+            <p class="text-sm text-red-300">{{ error }}</p>
           </div>
         </div>
       </div>
