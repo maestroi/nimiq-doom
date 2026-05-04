@@ -1,12 +1,12 @@
 module github.com/maestroi/nimiq-doom/uploader
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.4
+toolchain go1.25.9
 
 require (
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/time v0.14.0
+	golang.org/x/time v0.15.0
 )
 
 require (
