@@ -114,3 +114,15 @@ export function getPlatformInfo(platform) {
   }
   return platforms[platform] || { name: String(platform), icon: '🎮', color: 'text-gray-400', bg: 'bg-gray-400/10' }
 }
+
+/**
+ * Format a Luna value (Nimiq base unit) as a human-readable NIM string.
+ * 1 NIM = 100,000 Luna.
+ * @param {number|null|undefined} luna
+ * @returns {string}
+ */
+export function formatPrice(luna) {
+  if (luna == null) return ''
+  const nim = luna / 1e5
+  return `${nim.toLocaleString(undefined, { maximumFractionDigits: 5 })} NIM`
+}
