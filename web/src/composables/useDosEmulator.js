@@ -812,9 +812,18 @@ ipx=false
 
   async function stopGame(containerElement) {
     console.log('Stopping game emulation - removing iframe for full cleanup')
-    
-    // Simply remove the iframe - this fully stops everything (WASM, audio, WebGL)
-    // The browser garbage collects all resources when the iframe is destroyed
+
+    // JS-DOS 6.x can keep Web Audio playing after the iframe is removed; mute first.
+    const ci = dosMainCi.value || dosCi.value
+    try {
+      if (ci && typeof ci.mute === 'function') {
+        ci.mute()
+      }
+    } catch (e) {
+      console.warn('JS-DOS mute during stop:', e)
+    }
+
+    // Remove the iframe (WASM, WebGL, iframe audio context)
     if (emulatorIframe.value) {
       console.log('Removing emulator iframe...')
       emulatorIframe.value.remove()
