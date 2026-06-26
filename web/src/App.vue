@@ -190,7 +190,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { formatBytes } from './utils.js'
-import { NimiqRPC } from './nimiq-rpc.js'
+import { createNimiqDriver, NIMIQ_CONFIG } from './drivers/index.js'
 import Header from './components/Header.vue'
 import EmulatorContainer from './components/EmulatorContainer.vue'
 import GameSelector from './components/GameSelector.vue'
@@ -204,39 +204,39 @@ import { useDosEmulator } from './composables/useDosEmulator.js'
 import { useGbEmulator } from './composables/useGbEmulator.js'
 import { useNesEmulator } from './composables/useNesEmulator.js'
 
+const LS_RPC_URL = 'nimiq-doom-rpc-url'
+const LS_CUSTOM_RPC = 'nimiq-doom-custom-rpc'
+const LS_CATALOG = 'nimiq-doom-catalog'
+const LS_CUSTOM_CATALOG = 'nimiq-doom-custom-catalog'
+const LS_DEV_MODE = 'nimiq-doom-developer-mode'
+
 // RPC Configuration
-const rpcEndpoints = ref([
-  { name: 'NimiqScan Mainnet', url: 'https://rpc-mainnet.nimiqscan.com' },
-  { name: 'Custom...', url: 'custom' }
-])
+const rpcEndpoints = NIMIQ_CONFIG.rpcEndpoints
+const selectedRpcEndpoint = ref(localStorage.getItem(LS_RPC_URL) || NIMIQ_CONFIG.defaultRpc)
+const customRpcEndpoint = ref(localStorage.getItem(LS_CUSTOM_RPC) || '')
+const _initRpcUrl = selectedRpcEndpoint.value === 'custom'
+  ? customRpcEndpoint.value || NIMIQ_CONFIG.defaultRpc
+  : selectedRpcEndpoint.value
+const rpcClient = ref(createNimiqDriver(_initRpcUrl).rpc)
 
-const selectedRpcEndpoint = ref('https://rpc-mainnet.nimiqscan.com')
-const customRpcEndpoint = ref('')
-const rpcClient = ref(new NimiqRPC(selectedRpcEndpoint.value))
-
-// Configuration - Multiple catalogs
-const catalogs = ref([
-  { name: 'Test', address: 'NQ32 0VD4 26TR 1394 KXBJ 862C NFKG 61M5 GFJ0', devOnly: true },
-  { name: 'Main', address: 'NQ15 NXMP 11A0 TMKP G1Q8 4ABD U16C XD6Q D948' },
-  { name: 'Custom...', address: 'custom' }
-])
-const selectedCatalogName = ref('Main') // Default to Main (public catalog)
-const customCatalogAddress = ref('')
+// Catalog Configuration
+const catalogs = NIMIQ_CONFIG.catalogs
+const selectedCatalogName = ref(localStorage.getItem(LS_CATALOG) || NIMIQ_CONFIG.defaultCatalog)
+const customCatalogAddress = ref(localStorage.getItem(LS_CUSTOM_CATALOG) || '')
 
 // Developer Mode
-const developerMode = ref(false)
+const developerMode = ref(localStorage.getItem(LS_DEV_MODE) === 'true')
 const showRetiredGames = ref(false)
 
 // Visible catalogs (hide Test catalog unless in developer mode)
 const visibleCatalogs = computed(() => {
-  if (developerMode.value) {
-    return catalogs.value
-  }
-  return catalogs.value.filter(c => !c.devOnly)
+  if (developerMode.value) return catalogs
+  return catalogs.filter(c => !c.devOnly)
 })
 
 // Switch away from Test catalog if developer mode is disabled
 watch(developerMode, (newVal) => {
+  localStorage.setItem(LS_DEV_MODE, newVal ? 'true' : 'false')
   if (!newVal && selectedCatalogName.value === 'Test') {
     selectedCatalogName.value = 'Main'
     console.log('Switched from Test to Main catalog (developer mode disabled)')
@@ -247,10 +247,10 @@ const catalogAddress = computed(() => {
   if (selectedCatalogName.value === 'Custom...') {
     return customCatalogAddress.value || null
   }
-  const catalog = catalogs.value.find(c => c.name === selectedCatalogName.value)
-  return catalog ? catalog.address : catalogs.value.find(c => c.name === 'Main')?.address
+  const catalog = catalogs.find(c => c.name === selectedCatalogName.value)
+  return catalog ? catalog.address : catalogs.find(c => c.name === 'Main')?.address
 })
-const publisherAddress = ref('NQ89 4GDH 0J4U C2FY TU0Y TP1X J1H7 3HX3 PVSE') // Trusted publisher address
+const publisherAddress = ref(NIMIQ_CONFIG.publisherAddress)
 
 // Catalog and Cartridge
 const selectedPlatform = ref(null)
@@ -429,6 +429,7 @@ async function onGameChange(game) {
 // Handle catalog selection
 function onCatalogChange(catalogName) {
   selectedCatalogName.value = catalogName
+  localStorage.setItem(LS_CATALOG, catalogName)
   // Reset platform, game selection and reload catalog
   selectedPlatform.value = null
   selectedGame.value = null
@@ -445,6 +446,7 @@ function onCatalogChange(catalogName) {
 // Handle custom catalog address change
 function onCustomCatalogChange(address) {
   customCatalogAddress.value = address
+  localStorage.setItem(LS_CUSTOM_CATALOG, address || '')
   // Reset game selection and reload catalog if address is set
   selectedGame.value = null
   selectedVersion.value = null
@@ -634,15 +636,17 @@ const localFileName = ref(null)
 function onRpcEndpointChange(newEndpoint) {
   selectedRpcEndpoint.value = newEndpoint
   if (newEndpoint !== 'custom') {
-    rpcClient.value = new NimiqRPC(newEndpoint)
+    localStorage.setItem(LS_RPC_URL, newEndpoint)
+    rpcClient.value = createNimiqDriver(newEndpoint).rpc
   }
 }
 
 function onCustomRpcEndpointChange(newUrl) {
   customRpcEndpoint.value = newUrl
+  localStorage.setItem(LS_CUSTOM_RPC, newUrl || '')
   if (newUrl) {
     selectedRpcEndpoint.value = newUrl
-    rpcClient.value = new NimiqRPC(newUrl)
+    rpcClient.value = createNimiqDriver(newUrl).rpc
   }
 }
 
